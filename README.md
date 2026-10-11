@@ -9,7 +9,7 @@ QRFSL is a regression method that predicts a numeric target in two stages.
 
 The super learner is trained on *cross-validated* quantiles: every training row is predicted by a QRF that did not see that row. The super learner therefore learns how the quantiles relate to the true value on data the QRF has not memorised.
 
-This repository holds the original R code ([Rcode_QRFSL.R](Rcode_QRFSL.R)) and a Python port ([python/](python/)) split into a training script and an inference script.
+This repository holds a Python port ([python/](python/)) of the original R code, split into a training script and an inference script. The R code (`Rcode_QRFSL.R`) has been removed from the current files; it is kept in the history at commit [1fea660](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R), and the line numbers in sections 3 and 4 link to it there.
 
 ## Contents
 
@@ -35,8 +35,7 @@ QRFSL/
 │   ├── requirements.txt
 │   └── train.py                training: fit QRFSL on a CSV, save the model
 ├── README.md                   this document (English)
-├── README_ko.md                Korean version
-└── Rcode_QRFSL.R               original R code
+└── README_ko.md                Korean version
 ```
 
 The example commands in section 6 create `python/model/` (saved models) and `python/output/` (prediction files).
@@ -65,11 +64,13 @@ Feeding all 21 quantiles to the super learner lets it use the whole predicted di
 
 ## 3. Walk-through of Rcode_QRFSL.R
 
-### 3.1 Packages (lines 5–8)
+The line numbers below refer to [Rcode_QRFSL.R at commit 1fea660](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R).
+
+### 3.1 Packages ([lines 5–8](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L5-L8))
 
 `quantregForest` (which also attaches `randomForest`), `doParallel` and `foreach`.
 
-### 3.2 Training: `QRFSL()` (lines 12–107)
+### 3.2 Training: `QRFSL()` ([lines 12–107](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L12-L107))
 
 | Argument | Default | Meaning |
 |:--|:--|:--|
@@ -81,14 +82,14 @@ Feeding all 21 quantiles to the super learner lets it use the whole predicted di
 | `mc` | 1 | number of parallel workers; folds run in parallel when above 1 |
 | `sl` | 0 | documented as "0: weights, 1: rf" but never used; the code always fits a random forest (section 4) |
 
-1. **Fold split (lines 32–39).** `cv.folds()` shuffles the row numbers 1, ..., n and deals them to folds 1, 2, ..., k, 1, 2, ... in turn (`split(sample(1:n), rep(1:folds, length = n))`), so fold sizes differ by at most one row. With the 27 training rows of the example and k = 10, seven folds have 3 rows and three folds have 2.
-2. **Fold data (lines 42–46).** For fold i, `tdat_x_cv[[i]]` and `tdat_y_cv[[i]]` hold every row except fold i (used for fitting); `idat_x_cv[[i]]` and `idat_y_cv[[i]]` hold the rows of fold i (used for predicting).
-3. **Cross-validated quantiles (lines 49–79).** For each fold: `set.seed(i)`, fit `quantregForest()` on the fitting part with the package defaults, then predict the 21 quantiles of the held-out rows. With `mc > 1` the folds run on a `doParallel` cluster. Because every fold sets its own seed, `mc = 1` and `mc = 2` give identical results (checked).
-4. **Stacking (lines 80–86).** The fold predictions are stacked into an n x 21 matrix `pred_cv`. The column names returned by quantregForest, such as `quantile= 0.025`, lose their spaces and become `quantile=0.025`. The true targets are stacked in the same fold order into `yact_cv`.
-5. **Super learner (lines 89–96).** `set.seed(seed)`, then `randomForest(x = pred_cv, y = yact_cv, ntree = 1000)`. All other settings are the package defaults: mtry = floor(21 / 3) = 7 candidate inputs per split, nodesize = 5.
-6. **Return value (lines 99–106).** `list(sl, x, y, prob)`. The full-data QRF is not fitted here; the training data is kept so that `predict.QRFSL()` can fit it.
+1. **Fold split ([lines 32–39](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L32-L39)).** `cv.folds()` shuffles the row numbers 1, ..., n and deals them to folds 1, 2, ..., k, 1, 2, ... in turn (`split(sample(1:n), rep(1:folds, length = n))`), so fold sizes differ by at most one row. With the 27 training rows of the example and k = 10, seven folds have 3 rows and three folds have 2.
+2. **Fold data ([lines 42–46](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L42-L46)).** For fold i, `tdat_x_cv[[i]]` and `tdat_y_cv[[i]]` hold every row except fold i (used for fitting); `idat_x_cv[[i]]` and `idat_y_cv[[i]]` hold the rows of fold i (used for predicting).
+3. **Cross-validated quantiles ([lines 49–79](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L49-L79)).** For each fold: `set.seed(i)`, fit `quantregForest()` on the fitting part with the package defaults, then predict the 21 quantiles of the held-out rows. With `mc > 1` the folds run on a `doParallel` cluster. Because every fold sets its own seed, `mc = 1` and `mc = 2` give identical results (checked).
+4. **Stacking ([lines 80–86](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L80-L86)).** The fold predictions are stacked into an n x 21 matrix `pred_cv`. The column names returned by quantregForest, such as `quantile= 0.025`, lose their spaces and become `quantile=0.025`. The true targets are stacked in the same fold order into `yact_cv`.
+5. **Super learner ([lines 89–96](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L89-L96)).** `set.seed(seed)`, then `randomForest(x = pred_cv, y = yact_cv, ntree = 1000)`. All other settings are the package defaults: mtry = floor(21 / 3) = 7 candidate inputs per split, nodesize = 5.
+6. **Return value ([lines 99–106](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L99-L106)).** `list(sl, x, y, prob)`. The full-data QRF is not fitted here; the training data is kept so that `predict.QRFSL()` can fit it.
 
-### 3.3 Prediction: `predict.QRFSL()` (lines 111–154)
+### 3.3 Prediction: `predict.QRFSL()` ([lines 111–154](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L111-L154))
 
 Arguments: `object` (the list returned by `QRFSL()`), `newx` (new features), `seed` (default 0).
 
@@ -97,7 +98,7 @@ Arguments: `object` (the list returned by `QRFSL()`), `newx` (new features), `se
 3. Feed `qpred` to the super learner `object$sl`. This is `pred`.
 4. Return `list(qmod, qpred, pred)`.
 
-### 3.4 Example (lines 160–206)
+### 3.4 Example ([lines 160–206](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L160-L206))
 
 - Data: `mtcars`, 32 cars and 11 columns. Target: `mpg` (fuel economy, miles per gallon). Features: the other 10 columns (`cyl`, `disp`, `hp`, `drat`, `wt`, `qsec`, `vs`, `am`, `gear`, `carb`).
 - `set.seed(2)` and `sample()` pick 5 test rows (row numbers 21, 15, 6, 30, 8); the other 27 rows are the training data.
@@ -120,8 +121,8 @@ RMSE is 1.944 mpg and `corr` (squared correlation) is 0.922. Other R versions ca
 
 ## 4. Details that are easy to miss in the R code
 
-1. **The `sl` argument does nothing.** Line 90 (`sl <- suppressWarnings(randomForest(...))`) overwrites it. Only the random forest super learner exists; the "weights" option is not implemented. The Python port adds it as an option (section 5.4).
-2. **Fold models always use seeds 1, ..., k.** `set.seed(i)` on lines 52 and 67 does not depend on `seed`. `seed` controls only the fold split (line 35) and the super learner (line 89). The full-data QRF is controlled by the `seed` of `predict.QRFSL()`.
+1. **The `sl` argument does nothing.** [Line 90](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L90) (`sl <- suppressWarnings(randomForest(...))`) overwrites it. Only the random forest super learner exists; the "weights" option is not implemented. The Python port adds it as an option (section 5.4).
+2. **Fold models always use seeds 1, ..., k.** `set.seed(i)` on lines [52](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L52) and [67](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L67) does not depend on `seed`. `seed` controls only the fold split ([line 35](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L35)) and the super learner ([line 89](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L89)). The full-data QRF is controlled by the `seed` of `predict.QRFSL()`.
 3. **QRF settings are the package defaults** because the code does not set them: 500 trees, mtry = max(floor(p / 3), 1) candidate features per split (3 for the 10 mtcars features), nodesize = 5 (a node with 5 rows or fewer is not split any further), and a bootstrap sample of n rows drawn with replacement for each tree.
 4. **One stored target per leaf.** As described in section 2, quantregForest keeps one randomly chosen target per leaf and tree. The candidates are all training rows that reach the leaf, including rows that were not in that tree's bootstrap sample.
 5. **The full-data QRF is refitted in every prediction call.** The prediction therefore depends on the `seed` given to `predict.QRFSL()`, and the trained object carries the training data `x` and `y` (754 KB for the mtcars example).

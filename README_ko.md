@@ -9,7 +9,7 @@ QRFSL 은 숫자로 된 목표값을 두 단계로 예측하는 회귀 방법입
 
 슈퍼 러너는 *교차검증으로 만든* 분위수로 학습합니다. 즉 학습 데이터의 각 행을, 그 행을 학습에 쓰지 않은 QRF 로 예측한 값입니다. 그래서 슈퍼 러너는 QRF 가 외워 버린 데이터가 아니라 처음 보는 데이터에서 분위수와 실제값이 어떻게 이어지는지를 배웁니다.
 
-이 저장소에는 원본 R 코드([Rcode_QRFSL.R](Rcode_QRFSL.R))와, 이를 학습 코드와 추론 코드로 나누어 옮긴 파이썬 버전([python/](python/))이 있습니다.
+이 저장소에는 원본 R 코드를 학습 코드와 추론 코드로 나누어 옮긴 파이썬 버전([python/](python/))이 있습니다. R 코드(`Rcode_QRFSL.R`)는 현재 파일에서는 지웠고 커밋 [1fea660](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R) 기록에 남아 있으며, 3장과 4장의 행 번호는 그 파일로 연결됩니다.
 
 ## 목차
 
@@ -35,8 +35,7 @@ QRFSL/
 │   ├── requirements.txt
 │   └── train.py                학습: CSV 로 QRFSL 을 학습하고 모델 저장
 ├── README.md                   영문 문서
-├── README_ko.md                이 문서(한국어)
-└── Rcode_QRFSL.R               원본 R 코드
+└── README_ko.md                이 문서(한국어)
 ```
 
 아래 6장의 예시 명령을 실행하면 `python/model/`(저장된 모델)과 `python/output/`(예측 결과 파일) 폴더가 생깁니다.
@@ -67,11 +66,13 @@ QRFSL/
 
 ## 3. Rcode_QRFSL.R 코드 설명
 
-### 3.1 패키지 불러오기 (5–8행)
+아래 행 번호는 [커밋 1fea660 의 Rcode_QRFSL.R](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R) 기준입니다.
+
+### 3.1 패키지 불러오기 ([5–8행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L5-L8))
 
 `quantregForest`(불러올 때 `randomForest` 도 함께 붙음), `doParallel`, `foreach`.
 
-### 3.2 학습 함수 `QRFSL()` (12–107행)
+### 3.2 학습 함수 `QRFSL()` ([12–107행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L12-L107))
 
 | 인자 | 기본값 | 뜻 |
 |:--|:--|:--|
@@ -83,14 +84,14 @@ QRFSL/
 | `mc` | 1 | 병렬 작업 수. 1보다 크면 폴드를 동시에 학습 |
 | `sl` | 0 | 설명은 "0: 가중치, 1: 랜덤 포레스트" 이지만 실제로 쓰이지 않고, 언제나 랜덤 포레스트를 학습함(4장) |
 
-1. **폴드 나누기 (32–39행).** `cv.folds()` 는 행 번호 1, ..., n 을 섞은 뒤 폴드 1, 2, ..., k, 1, 2, ... 순서로 돌아가며 나눠 줍니다(`split(sample(1:n), rep(1:folds, length = n))`). 그래서 폴드끼리 크기 차이는 많아야 한 행입니다. 예제처럼 학습 행이 27개이고 k = 10 이면 7개 폴드는 3행, 3개 폴드는 2행입니다.
-2. **폴드별 데이터 (42–46행).** 폴드 i 에 대해 `tdat_x_cv[[i]]`, `tdat_y_cv[[i]]` 는 폴드 i 를 뺀 나머지 행(학습용), `idat_x_cv[[i]]`, `idat_y_cv[[i]]` 는 폴드 i 의 행(예측용)입니다.
-3. **교차검증 분위수 만들기 (49–79행).** 폴드마다 `set.seed(i)` 후 학습용 행으로 `quantregForest()` 를 패키지 기본 설정 그대로 학습하고, 빼 둔 행의 분위수 21개를 예측합니다. `mc > 1` 이면 `doParallel` 로 폴드를 동시에 돌립니다. 폴드마다 시드를 따로 정하므로 `mc = 1` 과 `mc = 2` 의 결과는 똑같습니다(직접 확인함).
-4. **결과 쌓기 (80–86행).** 폴드별 예측을 위아래로 이어 n 행 x 21 열 행렬 `pred_cv` 를 만듭니다. quantregForest 가 붙이는 열 이름 `quantile= 0.025` 에서 빈칸을 지워 `quantile=0.025` 로 바꿉니다. 실제값도 같은 폴드 순서로 이어 `yact_cv` 를 만듭니다.
-5. **슈퍼 러너 학습 (89–96행).** `set.seed(seed)` 후 `randomForest(x = pred_cv, y = yact_cv, ntree = 1000)`. 나머지 설정은 패키지 기본값입니다. 분기마다 살펴보는 입력 수 mtry = floor(21 / 3) = 7, nodesize = 5.
-6. **돌려주는 값 (99–106행).** `list(sl, x, y, prob)`. 전체 데이터 QRF 는 여기서 학습하지 않고, `predict.QRFSL()` 이 학습할 수 있도록 학습 데이터를 그대로 담아 둡니다.
+1. **폴드 나누기 ([32–39행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L32-L39)).** `cv.folds()` 는 행 번호 1, ..., n 을 섞은 뒤 폴드 1, 2, ..., k, 1, 2, ... 순서로 돌아가며 나눠 줍니다(`split(sample(1:n), rep(1:folds, length = n))`). 그래서 폴드끼리 크기 차이는 많아야 한 행입니다. 예제처럼 학습 행이 27개이고 k = 10 이면 7개 폴드는 3행, 3개 폴드는 2행입니다.
+2. **폴드별 데이터 ([42–46행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L42-L46)).** 폴드 i 에 대해 `tdat_x_cv[[i]]`, `tdat_y_cv[[i]]` 는 폴드 i 를 뺀 나머지 행(학습용), `idat_x_cv[[i]]`, `idat_y_cv[[i]]` 는 폴드 i 의 행(예측용)입니다.
+3. **교차검증 분위수 만들기 ([49–79행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L49-L79)).** 폴드마다 `set.seed(i)` 후 학습용 행으로 `quantregForest()` 를 패키지 기본 설정 그대로 학습하고, 빼 둔 행의 분위수 21개를 예측합니다. `mc > 1` 이면 `doParallel` 로 폴드를 동시에 돌립니다. 폴드마다 시드를 따로 정하므로 `mc = 1` 과 `mc = 2` 의 결과는 똑같습니다(직접 확인함).
+4. **결과 쌓기 ([80–86행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L80-L86)).** 폴드별 예측을 위아래로 이어 n 행 x 21 열 행렬 `pred_cv` 를 만듭니다. quantregForest 가 붙이는 열 이름 `quantile= 0.025` 에서 빈칸을 지워 `quantile=0.025` 로 바꿉니다. 실제값도 같은 폴드 순서로 이어 `yact_cv` 를 만듭니다.
+5. **슈퍼 러너 학습 ([89–96행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L89-L96)).** `set.seed(seed)` 후 `randomForest(x = pred_cv, y = yact_cv, ntree = 1000)`. 나머지 설정은 패키지 기본값입니다. 분기마다 살펴보는 입력 수 mtry = floor(21 / 3) = 7, nodesize = 5.
+6. **돌려주는 값 ([99–106행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L99-L106)).** `list(sl, x, y, prob)`. 전체 데이터 QRF 는 여기서 학습하지 않고, `predict.QRFSL()` 이 학습할 수 있도록 학습 데이터를 그대로 담아 둡니다.
 
-### 3.3 예측 함수 `predict.QRFSL()` (111–154행)
+### 3.3 예측 함수 `predict.QRFSL()` ([111–154행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L111-L154))
 
 인자: `object`(`QRFSL()` 이 돌려준 목록), `newx`(새 입력 변수), `seed`(기본 0).
 
@@ -99,7 +100,7 @@ QRFSL/
 3. `qpred` 를 슈퍼 러너 `object$sl` 에 넣어 최종 예측값 `pred` 를 얻습니다.
 4. `list(qmod, qpred, pred)` 를 돌려줍니다.
 
-### 3.4 예제 (160–206행)
+### 3.4 예제 ([160–206행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L160-L206))
 
 - 데이터: `mtcars`, 자동차 32대, 11개 열. 목표값은 `mpg`(연비, 갤런당 마일), 입력 변수는 나머지 10개 열(`cyl`, `disp`, `hp`, `drat`, `wt`, `qsec`, `vs`, `am`, `gear`, `carb`).
 - `set.seed(2)` 와 `sample()` 로 테스트용 5행(행 번호 21, 15, 6, 30, 8)을 고르고, 나머지 27행을 학습 데이터로 씁니다.
@@ -122,8 +123,8 @@ RMSE 는 1.944 mpg, `corr`(상관계수 제곱)은 0.922 입니다. R 버전에 
 
 ## 4. R 코드에서 놓치기 쉬운 점
 
-1. **`sl` 인자는 아무 일도 하지 않습니다.** 90행 `sl <- suppressWarnings(randomForest(...))` 가 이 인자를 덮어씁니다. 슈퍼 러너는 랜덤 포레스트 하나뿐이고, "가중치" 방식은 구현되어 있지 않습니다. 파이썬 버전은 이를 선택 옵션으로 더했습니다(5.4절).
-2. **폴드별 모델의 시드는 언제나 1, ..., k 입니다.** 52행과 67행의 `set.seed(i)` 는 `seed` 와 상관이 없습니다. `seed` 는 폴드 나누기(35행)와 슈퍼 러너(89행)에만 쓰입니다. 전체 데이터 QRF 의 시드는 `predict.QRFSL()` 의 `seed` 입니다.
+1. **`sl` 인자는 아무 일도 하지 않습니다.** [90행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L90) `sl <- suppressWarnings(randomForest(...))` 가 이 인자를 덮어씁니다. 슈퍼 러너는 랜덤 포레스트 하나뿐이고, "가중치" 방식은 구현되어 있지 않습니다. 파이썬 버전은 이를 선택 옵션으로 더했습니다(5.4절).
+2. **폴드별 모델의 시드는 언제나 1, ..., k 입니다.** [52행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L52)과 [67행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L67)의 `set.seed(i)` 는 `seed` 와 상관이 없습니다. `seed` 는 폴드 나누기([35행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L35))와 슈퍼 러너([89행](https://github.com/sinkei9456/QRFSL/blob/1fea660854e70d047ac88389a87849fa2caefef5/Rcode_QRFSL.R#L89))에만 쓰입니다. 전체 데이터 QRF 의 시드는 `predict.QRFSL()` 의 `seed` 입니다.
 3. **QRF 설정은 코드에 적혀 있지 않아 패키지 기본값을 씁니다.** 나무 500 그루, 분기마다 살펴보는 변수 수 mtry = max(floor(p / 3), 1) (mtcars 의 10개 변수면 3), nodesize = 5 (행이 5개 이하인 노드는 더 나누지 않음), 나무마다 n 행을 복원 추출한 부트스트랩 표본.
 4. **끝 노드마다 목표값 하나만 저장합니다.** 2장에서 설명한 대로 quantregForest 는 나무마다, 끝 노드마다 목표값 하나를 무작위로 골라 둡니다. 고르는 대상은 그 노드에 도착하는 모든 학습 행이며, 그 나무의 부트스트랩 표본에 뽑히지 않은 행도 포함됩니다.
 5. **전체 데이터 QRF 는 예측할 때마다 새로 학습합니다.** 그래서 예측값이 `predict.QRFSL()` 의 `seed` 에 따라 달라지고, 학습 결과 객체에 학습 데이터 `x`, `y` 가 들어 있습니다(mtcars 예제에서 754 KB).
