@@ -5,7 +5,7 @@
 QRFSL is a regression method that predicts a numeric target in two stages.
 
 1. A **quantile regression forest (QRF)** predicts 21 quantiles of the target for each row: the 2.5 %, 5 %, 10 %, ..., 95 % and 97.5 % points of the predicted distribution.
-2. A **super learner**, which is a random forest, takes those 21 quantiles as inputs and returns the final prediction.
+2. A **super learner** takes those 21 quantiles as inputs and returns the final prediction. In the R code it is a random forest; the Python port also offers a weighted average of the quantiles (section 5.4).
 
 The super learner is trained on *cross-validated* quantiles: every training row is predicted by a QRF that did not see that row. The super learner therefore learns how the quantiles relate to the true value on data the QRF has not memorised.
 
@@ -59,7 +59,7 @@ Prediction (new rows)
 
 **Quantile regression forest** (Meinshausen, 2006). A random forest is grown as usual, but the leaves keep the training targets instead of only their mean. For a new row, the targets in the leaves that the row reaches are pooled over all trees and their quantiles are read off. The R package used here, quantregForest (version 1.4-0), uses a fast approximation of this: for every tree and every leaf it stores the target of **one** training row picked at random among the rows in that leaf. The prediction for a new row is then the sample quantile (R `quantile` type 7) of the stored values, one value per tree, 500 values in total.
 
-**Super learner** (van der Laan et al., 2007) is a form of stacking: a second model learns how to combine first-stage predictions, using predictions made by cross-validation so that the combination is learned on unseen data. In QRFSL the first-stage predictions are the 21 quantiles from one QRF, and the combiner is a random forest rather than a weighted average.
+**Super learner** (van der Laan et al., 2007) is a form of stacking: a second model learns how to combine first-stage predictions, using predictions made by cross-validation so that the combination is learned on unseen data. In QRFSL the first-stage predictions are the 21 quantiles from one QRF, and the combiner in the R code is a random forest rather than a weighted average. The Python port adds the weighted average as an option (`sl="weights"`, section 5.4).
 
 Feeding all 21 quantiles to the super learner lets it use the whole predicted distribution, for example its spread or skewness, instead of only one summary such as the mean or the median.
 
@@ -79,7 +79,7 @@ Feeding all 21 quantiles to the super learner lets it use the whole predicted di
 | `prob` | 0.025, 0.05, 0.10, ..., 0.95, 0.975 (21 values) | quantile levels |
 | `seed` | 0 | random seed for the fold split and the super learner |
 | `mc` | 1 | number of parallel workers; folds run in parallel when above 1 |
-| `sl` | 0 | documented as "0: weights, 1: rf" but never used (section 4) |
+| `sl` | 0 | documented as "0: weights, 1: rf" but never used; the code always fits a random forest (section 4) |
 
 1. **Fold split (lines 32–39).** `cv.folds()` shuffles the row numbers 1, ..., n and deals them to folds 1, 2, ..., k, 1, 2, ... in turn (`split(sample(1:n), rep(1:folds, length = n))`), so fold sizes differ by at most one row. With the 27 training rows of the example and k = 10, seven folds have 3 rows and three folds have 2.
 2. **Fold data (lines 42–46).** For fold i, `tdat_x_cv[[i]]` and `tdat_y_cv[[i]]` hold every row except fold i (used for fitting); `idat_x_cv[[i]]` and `idat_y_cv[[i]]` hold the rows of fold i (used for predicting).
@@ -120,7 +120,7 @@ RMSE is 1.944 mpg and `corr` (squared correlation) is 0.922. Other R versions ca
 
 ## 4. Details that are easy to miss in the R code
 
-1. **The `sl` argument does nothing.** Line 90 (`sl <- suppressWarnings(randomForest(...))`) overwrites it. Only the random forest super learner exists; the "weights" option is not implemented.
+1. **The `sl` argument does nothing.** Line 90 (`sl <- suppressWarnings(randomForest(...))`) overwrites it. Only the random forest super learner exists; the "weights" option is not implemented. The Python port adds it as an option (section 5.4).
 2. **Fold models always use seeds 1, ..., k.** `set.seed(i)` on lines 52 and 67 does not depend on `seed`. `seed` controls only the fold split (line 35) and the super learner (line 89). The full-data QRF is controlled by the `seed` of `predict.QRFSL()`.
 3. **QRF settings are the package defaults** because the code does not set them: 500 trees, mtry = max(floor(p / 3), 1) candidate features per split (3 for the 10 mtcars features), nodesize = 5 (a node with 5 rows or fewer is not split any further), and a bootstrap sample of n rows drawn with replacement for each tree.
 4. **One stored target per leaf.** As described in section 2, quantregForest keeps one randomly chosen target per leaf and tree. The candidates are all training rows that reach the leaf, including rows that were not in that tree's bootstrap sample.
@@ -136,6 +136,7 @@ RMSE is 1.944 mpg and `corr` (squared correlation) is 0.922. Other R versions ca
 - [python/qrfsl.py](python/qrfsl.py): shared code used by both scripts.
   - `RForest`: regression random forest grown with the rules of R `randomForest`, built from scikit-learn `DecisionTreeRegressor`.
   - `QuantileRegressionForest`: port of `quantregForest()` and its `predict(what = ...)`.
+  - `ConvexWeights`: the "weights" super learner, which the R code does not implement (section 5.4).
   - `cv_folds()`: port of `cv.folds()`.
   - `QRFSL`: `fit()` corresponds to `QRFSL()`, `predict()` to `predict.QRFSL()`.
 - [python/train.py](python/train.py): reads a CSV, fits QRFSL and saves the model with joblib.
@@ -149,6 +150,7 @@ RMSE is 1.944 mpg and `corr` (squared correlation) is 0.922. Other R versions ca
 | `predict.QRFSL(object, newx, seed)` | `model.predict(X, return_quantiles=True)`, or `predict.py` |
 | `seed` of `predict.QRFSL()` | `full_seed`, given at training time |
 | `mc` | `n_jobs` |
+| `sl` (0 = weights, 1 = rf; the code always fits rf) | `sl="rf"` (default) or `sl="weights"` |
 | `quantregForest()` and `predict(what = prob)` | `QuantileRegressionForest.fit()` and `.predict()` |
 | `randomForest()` | `RForest` |
 | `cv.folds()` | `cv_folds()` |
@@ -165,14 +167,27 @@ RMSE is 1.944 mpg and `corr` (squared correlation) is 0.922. Other R versions ca
 | Tree growing | randomForest C code | scikit-learn `DecisionTreeRegressor` on copies of the bootstrap rows, with the same bootstrap, mtry and nodesize rules |
 | Node where none of the mtry candidate features can split | becomes a leaf | scikit-learn tries further features |
 | Categorical features | factors are handled directly | numeric columns only; encode categories first |
-| `sl` argument | declared but unused | not ported |
+| `sl` argument | declared but unused; always a random forest | `"rf"` (default, same as the R code) or `"weights"` (added, section 5.4) |
 | Parallel run | `doParallel` cluster over the folds | joblib: processes over the folds, threads over the trees of the full-data QRF and the super learner |
 
 Why the trees are built from `DecisionTreeRegressor` instead of scikit-learn's `RandomForestRegressor`: `RandomForestRegressor` represents repeated bootstrap rows as weights, so its node size counts distinct rows, while R counts every drawn row. Under the same nodesize rule this makes the scikit-learn trees slightly smaller. A first version built on `RandomForestRegressor` gave a mean mtcars RMSE of 2.368 (R: 2.196) and a mean Toyota Corona prediction of 24.63 (R: 24.16). Fitting each tree on actual copies of the drawn rows brought these to 2.227 and 24.08 (section 7).
 
+### 5.4 Weights super learner (`sl="weights"`, added in Python)
+
+The R code lists `sl = 0` ("weights") but does not implement it. The Python port implements it as follows.
+
+- The prediction is a weighted average of the 21 quantiles: w1 x q1 + ... + w21 x q21, where every weight is 0 or more and the weights sum to 1.
+- The weights minimise the squared error between the cross-validated quantiles and the true values under those two conditions. This is the `method.CC_LS` rule of the R SuperLearner package.
+- They are found with scipy non-negative least squares plus one extra row for "sum = 1". A general optimiser (scipy `trust-constr`) gave the same weights, with the largest difference 2.5e-8.
+- The weights are stored in `model.sl_.coef_`, and `train.py` prints the non-zero ones.
+
+Why not take non-negative least squares weights and divide them by their sum afterwards (`method.NNLS`, the default of SuperLearner)? QRF quantiles are pulled toward the middle of the data, so when the true values are spread wider, the undivided weights sum to more than 1 (1.381 on average on Friedman #1). Dividing by that sum shrinks every prediction toward zero: the Friedman #1 test RMSE was 4.606 with that rule against 2.302 with the rule above. Fitting with the condition "sum = 1" also means the weights stay the same when the same constant is added to the target and to the quantiles.
+
+The default stays `"rf"`: it is what the R code actually runs (even though its argument list shows `sl = 0`), and it was more accurate in our tests (section 7, Tables 6 and 7).
+
 ## 6. Running the Python version
 
-Tested with Python 3.12.3, numpy 2.5.2, pandas 3.0.6, scikit-learn 1.9.1 and joblib 1.5.2.
+Tested with Python 3.12.3, numpy 2.5.2, pandas 3.0.6, scipy 1.18.1, scikit-learn 1.9.1 and joblib 1.5.2.
 
 ```bash
 pip install -r python/requirements.txt
@@ -198,7 +213,8 @@ python train.py --data data/mtcars_train.csv --target mpg --drop car \
 | `--full-seed` | 0 | seed for the full-data QRF (R `seed` of `predict.QRFSL()`) |
 | `--n-jobs` | 1 | folds fitted in parallel (R `mc`) |
 | `--qrf-trees` | 500 | trees per QRF |
-| `--sl-trees` | 1000 | trees of the super learner |
+| `--sl` | rf | super learner: `rf` (random forest, as in the R code) or `weights` (weighted average of the quantiles, section 5.4) |
+| `--sl-trees` | 1000 | trees of the random forest super learner |
 | `--nodesize` | 5 | R `nodesize` for both forests |
 
 All columns except the target and `--drop` are used as features. They must be numeric and contain no missing values (quantregForest has the same rule).
@@ -221,7 +237,7 @@ python predict.py --model model/qrfsl_mtcars.joblib --data data/mtcars_test.csv 
 
 Output columns: the `--keep` columns, the `--target` column (if given), `pred` (final prediction) and, with `--quantiles`, `quantile=0.025`, ..., `quantile=0.975`.
 
-The example above printed RMSE 2.0598 and squared correlation 0.948 in our run. With only 5 test cars this number moves noticeably with the seeds; section 7 compares R and Python over many seeds.
+The example above printed RMSE 2.0598 and squared correlation 0.948 in our run. With only 5 test cars this number moves noticeably with the seeds; section 7 compares R and Python over many seeds. Adding `--sl weights` to the training command gave RMSE 1.9097 and squared correlation 0.925 in our run, but over 30 seeds the random forest was slightly better (section 7, Table 6).
 
 ### 6.3 Using it from Python
 
@@ -232,7 +248,7 @@ from qrfsl import QRFSL
 train = pd.read_csv("data/mtcars_train.csv")
 test = pd.read_csv("data/mtcars_test.csv")
 
-model = QRFSL(k=10, seed=1, full_seed=2019)
+model = QRFSL(k=10, seed=1, full_seed=2019)  # sl="weights" for the weighted average super learner
 model.fit(train.drop(columns=["car", "mpg"]), train["mpg"])
 
 pred, qpred = model.predict(test, return_quantiles=True)  # extra columns in test are ignored
@@ -242,7 +258,7 @@ pred, qpred = model.predict(test, return_quantiles=True)  # extra columns in tes
 
 - A saved model is a pickle file (joblib). Load only model files you trust, and load them with the same scikit-learn version that was used for training. `predict.py` needs `qrfsl.py` in the same folder.
 - The same seeds give the same model and predictions, whatever `n_jobs` is.
-- Model size grows with the number of training rows (500 QRF trees plus 1,000 super learner trees). The mtcars model is 1.5 MB.
+- Model size grows with the number of training rows (500 QRF trees plus 1,000 super learner trees; with `sl="weights"` the super learner is only 21 numbers). The mtcars model is 1.5 MB.
 
 ## 7. R and Python results compared
 
@@ -291,6 +307,24 @@ Table 5. Share of the 200 test rows whose true value lies below each predicted q
 The mean distance between the 10 % and 90 % quantiles is 9.765 in both. The intervals are wider than their nominal level on this data in both implementations, so this comes from the method and its settings, not from the port.
 
 In short, the Python port is not identical to the R code run by run, but its predictions and errors match R within the spread caused by the random seeds.
+
+**Random forest and weights super learners** (Python only; the same data, seeds and test rows as above; `sl="weights"` has no R counterpart):
+
+Table 6. mtcars test RMSE over 30 runs (unit: mpg)
+
+| Super learner | Mean | Standard deviation | Minimum | Maximum |
+|:--|--:|--:|--:|--:|
+| rf | 2.227 | 0.219 | 1.933 | 2.902 |
+| weights | 2.275 | 0.229 | 1.893 | 2.846 |
+
+Table 7. Friedman #1 test RMSE over 5 runs (target has no unit)
+
+| Super learner | Mean | Standard deviation | Minimum | Maximum |
+|:--|--:|--:|--:|--:|
+| rf | 2.053 | 0.047 | 1.981 | 2.098 |
+| weights | 2.302 | 0.014 | 2.285 | 2.319 |
+
+The weights super learner gave non-zero weight to 5 of the 21 quantiles on average (3 to 8 per run on mtcars, 4 to 6 on Friedman #1). Using the 50 % quantile (the median) alone gave a mean RMSE of 2.512 on mtcars and 2.346 on Friedman #1, so the weighted average beats the median alone but not the random forest.
 
 ## 8. References
 

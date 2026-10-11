@@ -34,8 +34,11 @@ def parse_args():
     p.add_argument("--n-jobs", type=int, default=1,
                    help="folds fitted in parallel (R mc, default 1)")
     p.add_argument("--qrf-trees", type=int, default=500, help="trees per QRF (default 500)")
+    p.add_argument("--sl", choices=["rf", "weights"], default="rf",
+                   help="super learner: rf = random forest as in the R code (default), "
+                        "weights = weighted average of the quantiles (R sl = 0)")
     p.add_argument("--sl-trees", type=int, default=1000,
-                   help="trees of the super learner (default 1000)")
+                   help="trees of the random forest super learner (default 1000)")
     p.add_argument("--nodesize", type=int, default=5,
                    help="R randomForest nodesize (default 5)")
     return p.parse_args()
@@ -50,8 +53,8 @@ def main():
     print(f"data     : {args.data} ({len(df)} rows)")
     print(f"target   : {args.target}")
     print(f"features : {len(X.columns)} -> {', '.join(X.columns)}")
-    print(f"settings : k={args.k}, quantiles={len(args.probs)}, seed={args.seed}, "
-          f"full_seed={args.full_seed}, n_jobs={args.n_jobs}")
+    print(f"settings : k={args.k}, quantiles={len(args.probs)}, sl={args.sl}, "
+          f"seed={args.seed}, full_seed={args.full_seed}, n_jobs={args.n_jobs}")
 
     start = time.time()
     model = QRFSL(
@@ -61,9 +64,14 @@ def main():
         full_seed=args.full_seed,
         n_jobs=args.n_jobs,
         qrf_trees=args.qrf_trees,
+        sl=args.sl,
         sl_trees=args.sl_trees,
         nodesize=args.nodesize,
     ).fit(X, y)
+
+    if args.sl == "weights":
+        w = pd.Series(model.sl_.coef_, index=model.quantile_names_)
+        print("weights  : " + ", ".join(f"{q}: {v:.3f}" for q, v in w[w > 0].items()))
 
     out = Path(args.model)
     out.parent.mkdir(parents=True, exist_ok=True)

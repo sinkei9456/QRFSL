@@ -8,8 +8,10 @@ Algorithm (same as the R code)
   1. Split the training rows into k folds.
   2. For each fold, fit a quantile regression forest (QRF) on the other k-1
      folds and predict the quantiles ``probs`` of the held-out fold.
-  3. Fit a random forest (the super learner) that maps those cross-validated
-     quantiles to the observed y.
+  3. Fit the super learner that maps those cross-validated quantiles to the
+     observed y: a random forest (``sl="rf"``, what the R code does) or a
+     weighted average of the quantiles (``sl="weights"``, the R ``sl = 0``
+     option, which the R code declares but does not implement).
   4. Fit one more QRF on all training rows. For new data, its predicted
      quantiles are fed to the super learner to give the final prediction.
 """
@@ -19,6 +21,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from scipy.optimize import nnls
 from sklearn.tree import DecisionTreeRegressor
 
 # 0.025, 0.05, 0.10, ..., 0.95, 0.975 (21 levels), the R default of `prob`
@@ -140,6 +143,38 @@ class QuantileRegressionForest:
         return np.nanquantile(values, probs, axis=1, method="linear").T
 
 
+class ConvexWeights:
+    """Super learner of the "weights" type (R ``sl = 0``, not implemented in R).
+
+    The prediction is a weighted average of the quantiles: the weights are
+    non-negative, sum to 1, and minimise the squared error on the
+    cross-validated quantiles (``method.CC_LS`` of the R SuperLearner package).
+
+    The constraint "sum = 1" is added to non-negative least squares as an extra
+    row with a very large weight, then the tiny remaining gap is divided out.
+    Because the weights sum to 1, subtracting the mean of y from y and from all
+    quantiles does not change the solution; it only makes the numbers better
+    conditioned. Fitting with the constraint (rather than scaling NNLS weights
+    to sum 1 afterwards, as ``method.NNLS`` does) means the weights do not
+    change when the same constant is added to y and to the quantiles.
+    """
+
+    def fit(self, Q, y):
+        y = np.asarray(y, dtype=float)
+        center = y.mean()
+        Q = np.asarray(Q, dtype=float) - center
+        big = 1e3 * np.sqrt(len(y)) * max(np.abs(Q).max(), 1.0)
+        w, _ = nnls(np.vstack([Q, np.full(Q.shape[1], big)]), np.append(y - center, big))
+        self.coef_ = w / w.sum()
+        return self
+
+    def predict(self, Q) -> np.ndarray:
+        return np.asarray(Q, dtype=float) @ self.coef_
+
+
+SL_TYPES = ("rf", "weights")
+
+
 def _fold_quantiles(X, y, test_idx, probs, fold_seed, qrf_trees, nodesize):
     """Fit a QRF without one fold and predict the quantiles of that fold."""
     train = np.ones(len(y), dtype=bool)
@@ -168,17 +203,23 @@ class QRFSL:
         trees of the full-data QRF and the super learner.
     qrf_trees, nodesize : QRF settings (quantregForest / randomForest
         defaults: 500 trees, nodesize 5).
-    sl_trees : number of trees of the super learner (R ``ntree = 1000``).
+    sl : type of super learner. "rf" (default) is the random forest that the
+        R code always fits. "weights" is a weighted average of the
+        quantiles (``ConvexWeights``); R lists it as ``sl = 0`` but the R code
+        never uses it.
+    sl_trees : number of trees of the random forest super learner
+        (R ``ntree = 1000``).
     """
 
     def __init__(self, k=10, probs=DEFAULT_PROBS, seed=0, full_seed=0, n_jobs=1,
-                 qrf_trees=500, sl_trees=1000, nodesize=5):
+                 qrf_trees=500, sl="rf", sl_trees=1000, nodesize=5):
         self.k = k
         self.probs = tuple(probs)
         self.seed = seed
         self.full_seed = full_seed
         self.n_jobs = n_jobs
         self.qrf_trees = qrf_trees
+        self.sl = sl
         self.sl_trees = sl_trees
         self.nodesize = nodesize
 
@@ -187,6 +228,8 @@ class QRFSL:
         y = np.asarray(y, dtype=float).ravel()
         if len(X) != len(y):
             raise ValueError(f"X has {len(X)} rows but y has {len(y)} values")
+        if self.sl not in SL_TYPES:
+            raise ValueError(f"sl must be one of {SL_TYPES}, got {self.sl!r}")
         if not 2 <= self.k <= len(y):
             raise ValueError(f"k must be between 2 and the number of rows ({len(y)})")
         if np.isnan(y).any() or X.isna().any().any():
@@ -206,9 +249,12 @@ class QRFSL:
         order = np.concatenate(self.folds_)
         yact_cv = y[order]
 
-        # 2) super learner: random forest from the 21 quantiles to y
-        self.sl_ = RForest(self.sl_trees, self.nodesize, self.seed,
-                           self.n_jobs).fit(pred_cv, yact_cv)
+        # 2) super learner from the quantiles to y
+        if self.sl == "rf":
+            self.sl_ = RForest(self.sl_trees, self.nodesize, self.seed,
+                               self.n_jobs).fit(pred_cv, yact_cv)
+        else:
+            self.sl_ = ConvexWeights().fit(pred_cv, yact_cv)
 
         # 3) QRF on all training rows, used at prediction time
         self.qmod_ = QuantileRegressionForest(self.qrf_trees, self.nodesize,
