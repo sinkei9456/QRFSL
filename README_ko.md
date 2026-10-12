@@ -332,7 +332,7 @@ R 과 numpy 는 서로 다른 난수를 만들기 때문에, 같은 시드를 �
 
 ## 8. QRFSL 은 쓸모가 있는가, 있다면 어디에 (이식 후 추가)
 
-R 코드는 2019년에 "모델의 예측분포 전체를 2단계에 넣으면 점 예측 하나보다 정보가 많을 것"이라는 직관으로 만들어졌습니다. 이식을 마친 뒤 그 직관을 확인했습니다. 이 장은 그 결과와 이유, 그리고 살아남은 형태인 **비대칭 비용 아래의 결정값 + 덮는 비율이 보증된 구간**을 기록합니다. 코드는 [python/conformal.py](python/conformal.py), [python/decision.py](python/decision.py), [python/experiments/](python/experiments/)에 있고, 아래 표는 모두 8.6절의 명령으로 다시 만들 수 있습니다.
+R 코드는 2019년에 "모델의 예측분포 전체를 2단계에 넣으면 점 예측 하나보다 정보가 많을 것"이라는 직관으로 만들어졌습니다. 이식을 마친 뒤 그 직관을 확인했습니다. 이 장은 그 결과와 이유, 그리고 살아남은 형태인 **비대칭 비용 아래의 결정값 + 덮는 비율이 보증된 구간**을 기록합니다. 코드는 [python/conformal.py](python/conformal.py), [python/decision.py](python/decision.py), [python/experiments/](python/experiments/)에 있고, 아래 표는 모두 8.7절의 명령으로 다시 만들 수 있습니다.
 
 ### 8.1 2단계가 할 수 있는 것과 없는 것
 
@@ -372,9 +372,61 @@ QRF 는 새 행에 대해 포레스트의 가중치로 학습 목표값들의 �
 - *QRFSL cost-weight stage*: 교차검증 행에서 경험 비용을 최소화하는 가중치로 분위수 21개를 가중 평균(어떤 비용에도 적용 가능)
 - 기준선: QRF 의 tau 분위수 그대로, 그 분위수에 한쪽 conformal 보정을 더한 것, pinball 손실로 직접 학습한 LightGBM, 중앙값 + 상수 이동
 
-**덮는 비율이 보증된 구간 (CQR).** Conformalized quantile regression(Romano, Patterson, Candès, 2019)은 QRF 의 5 %·95 % 분위수를 받아, 보정용 행마다 y 가 [q_lo(x), q_hi(x)] 밖으로 얼마나 벗어났는지를 재고, 그 거리들의 (1 − alpha)(1 + 1/n) 분위수만큼 모든 구간을 넓히거나 줄입니다. 그 결과 구간은 분위수 모델이 무엇이든, 행들이 서로 바꿔도 분포가 같기만 하면 새 y 를 1 − alpha 이상의 확률로 덮습니다. 모델의 품질은 폭에만 영향을 줍니다. 보정값이 상수 하나라서 폭은 QRF 분위수를 따라 x 마다 달라지며, 점 예측의 잔차로 만든 conformal 구간(모든 x 에서 같은 폭)과 이 점이 다릅니다. [conformal.py](python/conformal.py)는 split 방식(따로 뗀 보정 행, 정확한 보증), 비대칭 방식(아래·위 보정값 분리), QRFSL 의 교차검증 분위수를 보정 점수로 재사용하는 방식(추가 데이터 없음, 근사 보증)을 구현합니다.
+**덮는 비율이 보증된 구간 (CQR).** Conformalized quantile regression(Romano, Patterson, Candès, 2019)은 QRF 의 5 %·95 % 분위수를 받아, 보정용 행마다 y 가 [q_lo(x), q_hi(x)] 밖으로 얼마나 벗어났는지를 재고, 그 거리들의 (1 − alpha)(1 + 1/n) 분위수만큼 모든 구간을 넓히거나 줄입니다. 그 결과 구간은 분위수 모델이 무엇이든, 행들이 서로 바꿔도 분포가 같기만 하면 새 y 를 1 − alpha 이상의 확률로 덮습니다. 모델의 품질은 폭에만 영향을 줍니다. 보정값이 상수 하나라서 폭은 QRF 분위수를 따라 x 마다 달라지며, 점 예측의 잔차로 만든 conformal 구간(모든 x 에서 같은 폭)과 이 점이 다릅니다. [conformal.py](python/conformal.py)는 split 방식(따로 뗀 보정 행, 정확한 보증), 비대칭 방식(아래·위 보정값 분리), QRFSL 의 교차검증 분위수를 보정 점수로 재사용하는 방식(추가 데이터 없음, 형식적 보증 없음, 8.4.3 참고)을 구현합니다.
 
-### 8.4 실험 설계
+### 8.4 각 방법의 이론
+
+이 절은 8.3절의 방법들과 8.6절 결과의 근거를 설명합니다. 기호: 학습 행 $(x_i, y_i)$, $i = 1, \dots, n$, 새 행 $x$ 와 아직 모르는 $y$, $x$ 가 주어졌을 때 $y$ 의 실제 조건부 누적분포 $F(\cdot \mid x)$, 그 $\tau$ 분위수 $q_\tau(x)$.
+
+**8.4.1 QRF 의 예측분포.** $T$ 그루의 나무는 각각 새 행을 끝 노드 하나 $L_t(x)$ 에 넣습니다. 학습 행 $i$ 의 가중치는
+
+$$w_i(x) = \frac{1}{T} \sum_{t=1}^{T} \frac{\mathbf{1}\{x_i \in L_t(x)\}}{|L_t(x)|}, \qquad w_i(x) \ge 0, \quad \sum_i w_i(x) = 1$$
+
+이고, QRF 는 조건부 분포와 분위수를 다음과 같이 추정합니다.
+
+$$\hat F(y \mid x) = \sum_i w_i(x)\, \mathbf{1}\{y_i \le y\}, \qquad \hat q_\tau(x) = \inf\{\, y : \hat F(y \mid x) \ge \tau \,\}$$
+
+Meinshausen(2006)은 일정한 조건에서 $\hat F$ 가 참 분포로 수렴함을 보였습니다. $\hat F$ 의 평균 $\sum_i w_i(x) y_i$ 는 포레스트 자신의 예측값입니다(이 정의의 포레스트 기준. R 의 randomForest 는 끝 노드마다 부트스트랩으로 뽑힌 행만 평균하므로 조금 다름). `leaf_sample="all"` 은 이 가중치를 그대로 계산하고, `leaf_sample="one"` 은 끝 노드·나무마다 y 하나만 무작위로 저장하는 R quantregForest 의 근사입니다.
+
+*원래 QRFSL 에 대한 결론 (8.1절).* 분위수 벡터 $\hat{\mathbf q}(x)$ 위에서 제곱오차로 학습한 2단계 $g$ 는 $E[y \mid \hat{\mathbf q}(x)]$ 를 추정합니다. $\hat F$ 가 정확하다면 이 값은 $\hat F$ 의 평균, 즉 포레스트가 이미 내는 값과 같습니다. 그래서 $g$ 가 하는 일은 포레스트의 편향을 고치는 것뿐이고, 포레스트가 편향된 곳에서만 도움이 됩니다.
+
+*2단계가 교차검증 분위수를 쓰는 이유.* 학습 행은 자기 $y_i$ 가 $\hat F(\cdot \mid x_i)$ 를 만드는 끝 노드 안에 들어 있어서, 학습 데이터에서 낸 분위수가 $y_i$ 에 지나치게 가깝습니다. 그것으로 2단계를 학습하면 새 행에는 맞지 않는 보정을 배웁니다. 그 행을 빼고 학습한 QRF 의 분위수(10겹 교차검증)는 새 행의 분위수처럼 행동합니다. stacking 의 일반 원칙입니다(Wolpert, 1992).
+
+**8.4.2 비용 아래의 결정값.** $y$ 를 보기 전에 값 $d$ 를 정하면 비용 $c(d, y)$ 가 듭니다. 행 $x$ 의 최적 결정값은 기대 비용 $R(d) = E[c(d, y) \mid x]$ 를 최소로 하는 값입니다.
+
+*선형 비대칭 비용.* $c(d, y) = c_u \max(y - d, 0) + c_o \max(d - y, 0)$ ($c_u$ 는 과소 예측 단위당 비용, $c_o$ 는 과대 예측 단위당 비용)이면
+
+$$R'(d) = -c_u\,\bigl(1 - F(d \mid x)\bigr) + c_o\, F(d \mid x) = 0 \;\Longleftrightarrow\; F(d \mid x) = \frac{c_u}{c_u + c_o} = \tau$$
+
+이므로 최적 결정값은 조건부 분위수 $q_\tau(x)$ 입니다. 이 비용은 $c_u + c_o$ 배를 빼면 pinball 손실 $\rho_\tau(u) = u\,(\tau - \mathbf{1}\{u < 0\})$ ($u = y - d$)과 같습니다. 함수들 가운데 평균 pinball 손실을 최소로 하는 것을 고르면 조건부 $\tau$ 분위수를 추정하게 됩니다(Koenker, Bassett, 1978). 비용 3:1 은 $\tau = 0.75$, 9:1 은 $\tau = 0.9$ 입니다.
+
+*벌금형 비용.* $y > d$ 일 때마다 고정 벌금 $p$ 를 더하면 $R(d) = R_{\text{선형}}(d) + p\,\bigl(1 - F(d \mid x)\bigr)$ 입니다. 이제 최솟값 조건에 $d$ 에서의 $y$ 의 밀도가 들어가므로, 최적 결정값은 정해진 분위수 하나가 아니라 분포 전체의 모양에 따라 달라집니다. 원자(atom) $a_j$ 와 가중치 $w_j$ 로 된 이산 예측분포(QRF 분포, 또는 분위수 21개를 같은 가중치의 원자로 본 것)에서는
+
+$$\hat R(d) = c_u \sum_j w_j \max(a_j - d, 0) + c_o \sum_j w_j \max(d - a_j, 0) + p \sum_{j:\, a_j > d} w_j$$
+
+입니다. 이 함수는 조각마다 직선이고 원자에서만 아래로 뛰므로 최솟값은 원자 가운데 하나에 있습니다. `expected_cost_decision` 은 모든 원자에서 $\hat R$ 를 계산해 가장 작은 것을 고릅니다(plug-in 결정값).
+
+*2단계들.* pinball 2단계는 교차검증 분위수 벡터 위에서 $\rho_\tau$ 로 부스팅해 $g(\hat{\mathbf q}(x))$ 를 학습하므로, QRF 분위수 21개가 주어졌을 때 $y$ 의 $\tau$ 분위수를 추정합니다. QRF 가 잘 맞아 있으면 $\hat q_\tau(x)$ 를 그대로 돌려주고, 어긋나 있으면(8.6절: bike, california, friedman_hetero 에서 0.9 분위수를 넘는 행이 10 %가 아니라 4에서 5 %) 행마다 다른 양을 옮깁니다. 8.4.3의 conformal 이동은 모든 행을 같은 상수만큼 옮겨 평균 수준만 맞추고 행마다의 오차는 고치지 못하기 때문에, pinball 2단계가 비용을 더 많이 줄입니다. cost-weight 2단계는 $d = \sum_k v_k\, \hat q_{p_k}(x)$ ($v_k \ge 0$, $\sum_k v_k = 1$)로 두고 교차검증 행의 평균 비용이 최소가 되게 가중치를 고릅니다. 분위수의 가중 평균은 어떤 비용에도 쓸 수 있고, $y$ 에 상수를 더하면 $d$ 에도 같은 상수가 더해집니다.
+
+**8.4.3 Conformal 보정 (CQR).** Conformal 예측에 필요한 가정은 하나입니다. 보정 행과 새 행이 *교환 가능*해야 합니다. 즉 순서를 바꿔도 결합분포가 같아야 하며, 서로 독립이고 같은 분포에서 나온 행이면 성립합니다. 분위수 모델 $\hat q_{lo}, \hat q_{hi}$ 는 다른 행으로 학습한 뒤 고정해 둡니다.
+
+1. 보정 행 $n$ 개의 점수 $E_i = \max\bigl(\hat q_{lo}(x_i) - y_i,\; y_i - \hat q_{hi}(x_i)\bigr)$ 를 계산합니다. 구간 안이면 음수, 밖이면 양수입니다. 새 행의 점수 $E$ 도 같은 식입니다.
+2. 교환 가능하므로 $n + 1$ 개 점수 가운데 $E$ 의 순위는 $1, \dots, n+1$ 이 모두 같은 확률입니다. 따라서 $E$ 가 $k$ 번째로 작은 보정 점수 이하일 확률은 $k / (n + 1)$ 이상입니다.
+3. $k = \lceil (n+1)(1-\alpha) \rceil$ 로 잡고 $Q$ 를 $k$ 번째로 작은 보정 점수라 하면 $P(E \le Q) \ge 1 - \alpha$ 입니다.
+4. $E \le Q$ 는 $\hat q_{lo}(x) - Q \le y \le \hat q_{hi}(x) + Q$ 와 같은 말입니다. 따라서 구간 $[\hat q_{lo}(x) - Q,\; \hat q_{hi}(x) + Q]$ 는 새 $y$ 를 $1 - \alpha$ 이상의 확률로 덮고, 점수에 동점이 없으면 $1 - \alpha + 1/(n+1)$ 이하로 덮습니다(Romano, Patterson, Candès, 2019).
+
+이 논증 어디에도 $\hat q_{lo}, \hat q_{hi}$ 가 정확해야 한다는 조건이 없습니다. 분위수 모델이 나빠도 약속한 덮는 비율은 지켜지고, 좋으면 $|Q|$ 가 작아져 구간이 좁아집니다. QRF 구간이 너무 넓으면 $Q$ 가 음수가 되어 구간이 줄어듭니다(8.6절 friedman_hetero: 표준편차의 2.27배에서 1.80배).
+
+*conformal.py 의 다른 방식.*
+- 비대칭: 아래쪽 점수 $\hat q_{lo}(x_i) - y_i$ 와 위쪽 점수 $y_i - \hat q_{hi}(x_i)$ 를 각각 $\alpha/2$ 수준으로 따로 보정합니다. 각 끝을 벗어날 확률이 $\alpha/2$ 이하이므로 둘을 합쳐도 $\alpha$ 이하입니다.
+- 결정값용 한쪽 이동: $s$ 를 $y_i - \hat q_\tau(x_i)$ 가운데 $\lceil (n+1)\tau \rceil$ 번째로 작은 값으로 잡으면 $P\bigl(y \le \hat q_\tau(x) + s\bigr) \ge \tau$ 입니다.
+- 잔차 conformal (기준선): 점 예측 $\hat\mu$ 둘레의 점수 $|y_i - \hat\mu(x_i)|$ 를 씁니다. 보증은 같지만 모든 $x$ 에서 폭이 $2Q$ 로 같습니다.
+
+*보증이 다루지 못하는 것.* 이 보증은 새 행들에 대한 평균(전체) 덮는 비율입니다. $x$ 값마다의 덮는 비율(조건부 덮는 비율)은 분포에 대한 가정 없이는 보증할 수 없습니다. 모든 분포에서 이를 보증하는 방법은 기대 폭이 무한한 구간을 낼 수밖에 없음이 증명되어 있습니다(Vovk, 2012; Lei, Wasserman, 2014; Barber, Candès, Ramdas, Tibshirani, 2021b). 8.6절에서 friedman_hetero 의 가장 조용한 1/5 은 93 %, 가장 시끄러운 1/5 은 82 %를 덮은 것이 그 모습입니다.
+
+*cv 방식에는 형식적 보증이 없습니다.* 점수는 교차검증 분위수(학습 행의 90 %로 학습한 QRF 각각)에서 계산하지만, $Q$ 는 학습 행 전체로 다시 학습한 QRF 에 적용합니다. 새 행의 점수와 보정 점수가 서로 다른 모델에서 나오므로 교환 가능하지 않고, 2단계가 성립하지 않습니다. CV+(Barber, Candès, Ramdas, Tibshirani, 2021a)와 이를 분위수 점수로 넓힌 Gupta, Kuchibhotla, Ramdas(2022)의 방법은 새 행에도 다시 학습한 모델 대신 폴드별 모델 10개를 적용해 $1 - 2\alpha$ 이상의 보증을 되살리며, 여기에는 구현하지 않았습니다. 실험에서 cv 방식은 테스트 행의 0.897에서 0.911을 덮어 split 방식과 같았습니다.
+
+### 8.5 실험 설계
 
 데이터 5종, 각각 무작위 나누기 10번: 학습 2,000행, 보정 1,000행, 테스트 3,000행(데이터가 작으면 비례해서 줄임). QRF 는 나무 500그루, 전체 가중 분포(`leaf_sample="all"`), 10겹.
 
@@ -396,7 +448,7 @@ QRF 는 새 행에 대해 포레스트의 가중치로 학습 목표값들의 �
 
 비용: 선형 1:1 (tau 0.5), 3:1 (tau 0.75), 9:1 (tau 0.9), 그리고 선형 1:1 에 y 가 결정값을 넘을 때마다 학습 y 표준편차의 절반을 벌금으로 더한 것.
 
-### 8.5 결과
+### 8.6 결과
 
 **구간 (이름값 덮는 비율 90 %).** `experiments/results/intervals.csv`. 10번 나누기의 평균이며, 나누기 사이 덮는 비율의 흔들림은 최대 0.02 입니다.
 
@@ -499,7 +551,7 @@ QRF 는 새 행에 대해 포레스트의 가중치로 학습 목표값들의 �
 
 **정리.** 2019년 아이디어 가운데 살아남은 것은 이것입니다. 교차검증 분위수 위의 2단계는 비용이 크게 비대칭일 때 포레스트 τ 분위수의 유용한 조건부 재보정이고(9:1 에서 분위수 그대로보다 비용 5에서 18 % 절감, conformal 이동보다 큼), 교차검증 분위수는 보증된 구간을 위한 공짜 보정 데이터가 됩니다. 살아남지 못한 것은 일반 정확도 향상 수단으로서의 2단계와, 가장 좋은 기본 모델로서의 포레스트입니다. 부스팅 분위수 모델을 쓸 수 있는 문제라면 그것을 직접 학습해 conformal 보정하고, 포레스트를 쓸 이유가 있다면(작은 데이터, 안정성, 기존 흐름) 결정값에는 pinball 2단계를, 구간에는 CQR 을 더하면 됩니다.
 
-### 8.6 실험 실행
+### 8.7 실험 실행
 
 ```bash
 cd python
@@ -525,8 +577,15 @@ d = expected_cost_decision(atoms, weights, LinearCost(c_under=3, c_over=1))   # 
 
 ## 9. 참고 문헌
 
+- Barber, R. F., Candès, E. J., Ramdas, A., & Tibshirani, R. J. (2021a). Predictive inference with the jackknife+. *Annals of Statistics*, 49(1), 486–507.
+- Barber, R. F., Candès, E. J., Ramdas, A., & Tibshirani, R. J. (2021b). The limits of distribution-free conditional predictive inference. *Information and Inference*, 10(2), 455–482.
 - Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5–32.
+- Gupta, C., Kuchibhotla, A. K., & Ramdas, A. (2022). Nested conformal prediction and quantile out-of-bag ensemble methods. *Pattern Recognition*, 127, 108496.
+- Koenker, R., & Bassett, G. (1978). Regression quantiles. *Econometrica*, 46(1), 33–50.
+- Lei, J., & Wasserman, L. (2014). Distribution-free prediction bands for non-parametric regression. *Journal of the Royal Statistical Society: Series B*, 76(1), 71–96.
 - Meinshausen, N. (2006). Quantile regression forests. *Journal of Machine Learning Research*, 7, 983–999.
+- Romano, Y., Patterson, E., & Candès, E. J. (2019). Conformalized quantile regression. *Advances in Neural Information Processing Systems*, 32.
 - van der Laan, M. J., Polley, E. C., & Hubbard, A. E. (2007). Super learner. *Statistical Applications in Genetics and Molecular Biology*, 6(1), Article 25.
+- Vovk, V. (2012). Conditional validity of inductive conformal predictors. *Proceedings of the Asian Conference on Machine Learning*, PMLR 25, 475–490.
 - Wolpert, D. H. (1992). Stacked generalization. *Neural Networks*, 5(2), 241–259.
 - R 패키지: quantregForest (Meinshausen, Michel), randomForest (Liaw, Wiener).

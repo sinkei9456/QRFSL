@@ -330,7 +330,7 @@ The weights super learner gave non-zero weight to 5 of the 21 quantiles on avera
 
 ## 8. Does QRFSL help, and for what? (added after the port)
 
-The R code was written in 2019 with the intuition that feeding a model's whole predictive distribution to a second stage must carry more information than one point prediction. After porting it we tested that intuition. This section records the results, the reasoning, and the version of the idea that survives: **a decision value under an asymmetric cost, with an interval that has a coverage guarantee**. All code is in [python/conformal.py](python/conformal.py), [python/decision.py](python/decision.py) and [python/experiments/](python/experiments/); every table below can be regenerated with the commands in 8.6.
+The R code was written in 2019 with the intuition that feeding a model's whole predictive distribution to a second stage must carry more information than one point prediction. After porting it we tested that intuition. This section records the results, the reasoning, and the version of the idea that survives: **a decision value under an asymmetric cost, with an interval that has a coverage guarantee**. All code is in [python/conformal.py](python/conformal.py), [python/decision.py](python/decision.py) and [python/experiments/](python/experiments/); every table below can be regenerated with the commands in 8.7.
 
 ### 8.1 What the second stage can and cannot do
 
@@ -370,9 +370,61 @@ Two things a predictive distribution can give that a mean cannot:
 - *QRFSL cost-weight stage*: a weighted average of the 21 quantiles whose weights minimise the empirical cost on the out-of-fold rows (works for any cost);
 - baselines: the raw tau-quantile of the QRF, the same quantile after a one-sided conformal shift, LightGBM fitted directly with the pinball loss, and the median plus one constant shift.
 
-**An interval with a coverage guarantee (CQR).** Conformalized quantile regression (Romano, Patterson and Candès, 2019) takes the QRF's 5% and 95% quantiles, measures on calibration rows how far each y falls outside [q_lo(x), q_hi(x)], and widens (or narrows) every interval by the (1 - alpha)(1 + 1/n) quantile of those distances. The resulting interval covers a new y with probability at least 1 - alpha whatever the quantile model is, as long as the rows are exchangeable; the model's quality only decides the width. Because the shift is one constant, the width still varies with x as the QRF quantiles do, unlike a conformal interval built from residuals of a point prediction, which has the same width everywhere. [conformal.py](python/conformal.py) implements the split version (held-out calibration rows, exact guarantee), an asymmetric version (separate lower and upper shifts) and a version that reuses QRFSL's out-of-fold quantiles as calibration scores (no extra data; approximate guarantee).
+**An interval with a coverage guarantee (CQR).** Conformalized quantile regression (Romano, Patterson and Candès, 2019) takes the QRF's 5% and 95% quantiles, measures on calibration rows how far each y falls outside [q_lo(x), q_hi(x)], and widens (or narrows) every interval by the (1 - alpha)(1 + 1/n) quantile of those distances. The resulting interval covers a new y with probability at least 1 - alpha whatever the quantile model is, as long as the rows are exchangeable; the model's quality only decides the width. Because the shift is one constant, the width still varies with x as the QRF quantiles do, unlike a conformal interval built from residuals of a point prediction, which has the same width everywhere. [conformal.py](python/conformal.py) implements the split version (held-out calibration rows, exact guarantee), an asymmetric version (separate lower and upper shifts) and a version that reuses QRFSL's out-of-fold quantiles as calibration scores (no extra data; no formal guarantee, see 8.4.3).
 
-### 8.4 Experiment design
+### 8.4 Theory behind the pieces
+
+This section gives the reasoning behind every method in 8.3 and the results in 8.6. Notation: training rows $(x_i, y_i)$, $i = 1, \dots, n$; a new row $x$ with unknown $y$; $F(\cdot \mid x)$ the true conditional distribution function of $y$ given $x$ and $q_\tau(x)$ its $\tau$-quantile.
+
+**8.4.1 The QRF predictive distribution.** Each of the $T$ trees puts the new row in one leaf $L_t(x)$. Training row $i$ gets the weight
+
+$$w_i(x) = \frac{1}{T} \sum_{t=1}^{T} \frac{\mathbf{1}\{x_i \in L_t(x)\}}{|L_t(x)|}, \qquad w_i(x) \ge 0, \quad \sum_i w_i(x) = 1,$$
+
+and the QRF estimates the conditional distribution and its quantiles by
+
+$$\hat F(y \mid x) = \sum_i w_i(x)\, \mathbf{1}\{y_i \le y\}, \qquad \hat q_\tau(x) = \inf\{\, y : \hat F(y \mid x) \ge \tau \,\}.$$
+
+Meinshausen (2006) shows that $\hat F$ is consistent under regularity conditions. The mean of $\hat F$, $\sum_i w_i(x) y_i$, is the forest's own prediction (in this definition of the forest; R's randomForest averages only the bootstrap draws of each leaf, so it differs slightly). `leaf_sample="all"` computes these weights exactly; `leaf_sample="one"` is the approximation of R's quantregForest, which stores one random $y$ per leaf and tree.
+
+*Consequence for the original QRFSL (8.1).* A second stage $g$ trained with squared error on the quantile vector $\hat{\mathbf q}(x)$ estimates $E[y \mid \hat{\mathbf q}(x)]$. If $\hat F$ were exact, this would equal the mean of $\hat F$, which the forest already gives; $g$ therefore only corrects the forest's bias. This is why it helps where the forest is biased and nowhere else.
+
+*Why the second stage uses out-of-fold quantiles.* For a training row, its own $y_i$ sits in the leaves that build $\hat F(\cdot \mid x_i)$, so its in-sample quantiles are too close to $y_i$. A second stage trained on them would learn a correction that does not hold for new rows. Quantiles from a QRF fitted without that row (10-fold cross-validation) behave like quantiles of new rows; this is the usual rule of stacking (Wolpert, 1992).
+
+**8.4.2 Decisions under a cost.** Choosing a value $d$ before seeing $y$ costs $c(d, y)$; the best decision for row $x$ minimises the expected cost $R(d) = E[c(d, y) \mid x]$.
+
+*Linear asymmetric cost.* With $c(d, y) = c_u \max(y - d, 0) + c_o \max(d - y, 0)$, where $c_u$ is the cost per unit of under-prediction and $c_o$ per unit of over-prediction,
+
+$$R'(d) = -c_u\,\bigl(1 - F(d \mid x)\bigr) + c_o\, F(d \mid x) = 0 \;\Longleftrightarrow\; F(d \mid x) = \frac{c_u}{c_u + c_o} = \tau,$$
+
+so the best decision is the conditional quantile $q_\tau(x)$. Up to the factor $c_u + c_o$, this cost is the pinball (check) loss $\rho_\tau(u) = u\,(\tau - \mathbf{1}\{u < 0\})$ with $u = y - d$. Minimising the average pinball loss over a class of functions estimates the conditional $\tau$-quantile (Koenker and Bassett, 1978). A cost of 3:1 gives $\tau = 0.75$, 9:1 gives $\tau = 0.9$.
+
+*Penalty cost.* Adding a fixed penalty $p$ whenever $y > d$ gives $R(d) = R_{\text{linear}}(d) + p\,\bigl(1 - F(d \mid x)\bigr)$. The condition for the minimum now contains the density of $y$ at $d$, so the best decision is not a fixed quantile; it depends on the shape of the whole distribution. For a discrete predictive distribution with atoms $a_j$ and weights $w_j$ (the QRF distribution, or the 21 quantiles taken as equal atoms)
+
+$$\hat R(d) = c_u \sum_j w_j \max(a_j - d, 0) + c_o \sum_j w_j \max(d - a_j, 0) + p \sum_{j:\, a_j > d} w_j .$$
+
+This function is piecewise linear and only jumps down at the atoms, so its minimum is at one of the atoms; `expected_cost_decision` evaluates $\hat R$ at every atom and takes the smallest (the plug-in decision).
+
+*The second stages.* The pinball stage fits $g(\hat{\mathbf q}(x))$ by gradient boosting with $\rho_\tau$ on the out-of-fold quantile vectors, so it estimates the $\tau$-quantile of $y$ given the 21 QRF quantiles. If the QRF were calibrated, this would return $\hat q_\tau(x)$ itself; when it is not (8.6: on bike, california and friedman_hetero only 4 to 5% of the rows exceed the raw 0.9-quantile instead of 10%), $g$ moves each row by its own amount. The conformal shift of 8.4.3 instead moves every row by the same constant, which fixes the average level but not the row-to-row errors; this is why the pinball stage lowers the cost more. The cost-weight stage uses $d = \sum_k v_k\, \hat q_{p_k}(x)$ with weights $v_k \ge 0$, $\sum_k v_k = 1$, chosen to minimise the average cost on the out-of-fold rows. A weighted average of quantiles works for any cost and moves with the data: adding a constant to $y$ adds the same constant to $d$.
+
+**8.4.3 Conformal calibration (CQR).** Conformal prediction needs one assumption: the calibration rows and the new row are *exchangeable*, that is, their joint distribution does not change when they are put in another order (true for independent rows from one distribution). The quantile model $\hat q_{lo}, \hat q_{hi}$ is fitted on other rows and then held fixed.
+
+1. For the $n$ calibration rows compute the scores $E_i = \max\bigl(\hat q_{lo}(x_i) - y_i,\; y_i - \hat q_{hi}(x_i)\bigr)$: negative inside the interval, positive outside. The new row's score $E$ is defined the same way.
+2. By exchangeability, the rank of $E$ among the $n + 1$ scores is equally likely to be any of $1, \dots, n+1$. Hence $E$ is at most the $k$-th smallest calibration score with probability at least $k / (n + 1)$.
+3. Take $k = \lceil (n+1)(1-\alpha) \rceil$ and let $Q$ be the $k$-th smallest calibration score. Then $P(E \le Q) \ge 1 - \alpha$.
+4. $E \le Q$ is the same as $\hat q_{lo}(x) - Q \le y \le \hat q_{hi}(x) + Q$. So the interval $[\hat q_{lo}(x) - Q,\; \hat q_{hi}(x) + Q]$ covers the new $y$ with probability at least $1 - \alpha$; if the scores have no ties, also at most $1 - \alpha + 1/(n+1)$ (Romano, Patterson and Candès, 2019).
+
+Nothing in this argument requires $\hat q_{lo}$ and $\hat q_{hi}$ to be accurate. A poor quantile model still gives the promised coverage; a good one gives a smaller $|Q|$, that is, a narrower interval. When the QRF intervals are too wide, $Q$ is negative and the interval shrinks (8.6: 2.27 to 1.80 standard deviations on friedman_hetero).
+
+*Other versions in conformal.py.*
+- Asymmetric: the lower scores $\hat q_{lo}(x_i) - y_i$ and the upper scores $y_i - \hat q_{hi}(x_i)$ are calibrated separately, each at level $\alpha/2$. Each end is missed with probability at most $\alpha/2$, so both together at most $\alpha$.
+- One-sided shift for a decision: $s$ is the $\lceil (n+1)\tau \rceil$-th smallest of $y_i - \hat q_\tau(x_i)$, which gives $P\bigl(y \le \hat q_\tau(x) + s\bigr) \ge \tau$.
+- Residual conformal (baseline): scores $|y_i - \hat\mu(x_i)|$ around a point prediction $\hat\mu$; same guarantee, but the interval has the same width $2Q$ for every $x$.
+
+*What the guarantee does not cover.* It is a guarantee on average over new rows (marginal coverage). Coverage for each value of $x$ (conditional coverage) cannot be guaranteed without assumptions on the distribution: any method that achieves it for all distributions must give intervals of infinite expected length (Vovk, 2012; Lei and Wasserman, 2014; Barber, Candès, Ramdas and Tibshirani, 2021b). In 8.6 this shows as 93% coverage in the quietest fifth of friedman_hetero and 82% in the noisiest.
+
+*The cv version has no formal guarantee.* It takes the scores from the out-of-fold quantiles (each from a QRF fitted on 90% of the training rows) but applies $Q$ to the QRF refitted on all training rows. The new row's score and the calibration scores then come from different models, so they are not exchangeable and step 2 fails. CV+ (Barber, Candès, Ramdas and Tibshirani, 2021a), extended to quantile-based scores by Gupta, Kuchibhotla and Ramdas (2022), restores a guarantee of at least $1 - 2\alpha$ by applying the ten fold models, not the refitted one, to the new row; it is not implemented here. In the experiments the cv version still covered 0.897 to 0.911 of the test rows, the same as the split version.
+
+### 8.5 Experiment design
 
 Five data sets, 10 random splits each: 2,000 training rows, 1,000 calibration rows, 3,000 test rows (fewer when the data set is smaller). QRF with 500 trees and the full weighted distribution (`leaf_sample="all"`), 10 folds.
 
@@ -394,7 +446,7 @@ Roles of the rows:
 
 Costs: linear 1:1 (tau 0.5), 3:1 (tau 0.75), 9:1 (tau 0.9), and linear 1:1 plus a fixed penalty of half the training standard deviation of y whenever y exceeds the decision.
 
-### 8.5 Results
+### 8.6 Results
 
 **Intervals (nominal coverage 90%).** `experiments/results/intervals.csv`. Means over 10 splits; the spread between splits is at most 0.02 in coverage.
 
@@ -497,7 +549,7 @@ Reading:
 
 **Overall.** Of the 2019 idea, this is what holds up: a second stage on the out-of-fold quantiles is a useful conditional recalibration of a forest's tau-quantile when the cost is strongly asymmetric (5 to 18% lower cost than the raw quantile at 9:1, more than a conformal shift), and the out-of-fold quantiles double as free calibration data for valid intervals. What does not hold up: the second stage as a general accuracy booster, and the forest as the best base model. If the task allows a boosting quantile model, train it directly and conformalize it; if a forest is wanted (small data, robustness, an existing pipeline), add the pinball stage for decisions and CQR for intervals.
 
-### 8.6 Running the experiments
+### 8.7 Running the experiments
 
 ```bash
 cd python
@@ -523,8 +575,15 @@ d = expected_cost_decision(atoms, weights, LinearCost(c_under=3, c_over=1))   # 
 
 ## 9. References
 
+- Barber, R. F., Candès, E. J., Ramdas, A., & Tibshirani, R. J. (2021a). Predictive inference with the jackknife+. *Annals of Statistics*, 49(1), 486–507.
+- Barber, R. F., Candès, E. J., Ramdas, A., & Tibshirani, R. J. (2021b). The limits of distribution-free conditional predictive inference. *Information and Inference*, 10(2), 455–482.
 - Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5–32.
+- Gupta, C., Kuchibhotla, A. K., & Ramdas, A. (2022). Nested conformal prediction and quantile out-of-bag ensemble methods. *Pattern Recognition*, 127, 108496.
+- Koenker, R., & Bassett, G. (1978). Regression quantiles. *Econometrica*, 46(1), 33–50.
+- Lei, J., & Wasserman, L. (2014). Distribution-free prediction bands for non-parametric regression. *Journal of the Royal Statistical Society: Series B*, 76(1), 71–96.
 - Meinshausen, N. (2006). Quantile regression forests. *Journal of Machine Learning Research*, 7, 983–999.
+- Romano, Y., Patterson, E., & Candès, E. J. (2019). Conformalized quantile regression. *Advances in Neural Information Processing Systems*, 32.
 - van der Laan, M. J., Polley, E. C., & Hubbard, A. E. (2007). Super learner. *Statistical Applications in Genetics and Molecular Biology*, 6(1), Article 25.
+- Vovk, V. (2012). Conditional validity of inductive conformal predictors. *Proceedings of the Asian Conference on Machine Learning*, PMLR 25, 475–490.
 - Wolpert, D. H. (1992). Stacked generalization. *Neural Networks*, 5(2), 241–259.
 - R packages: quantregForest (Meinshausen and Michel), randomForest (Liaw and Wiener).
