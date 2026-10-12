@@ -5,11 +5,12 @@ Question 2: what does the second stage use? Same stacking with fewer inputs.
 
 Data (1,000 training rows, 2,000 test rows, 3 seeds): Friedman #1 with normal,
 heavy-tailed (t with 2 df) and x-dependent noise; a log-normal target;
-California housing; diabetes (n = 442); the synthetic heavy rain damage data
-of the companion repository if present.
+California housing; diabetes (n = 442); optionally the synthetic heavy rain
+damage data of the companion repository (Heavy-Rain-Damage-Prediction,
+python/data/Dat_train/tdat.csv) given with --heavy-rain-csv.
 
 Outputs experiments/results/benchmark_rmse.csv and benchmark_ablation.csv.
-Usage: python -m experiments.run_benchmark --seeds 3 --n-jobs 16
+Usage: python -m experiments.run_benchmark --seeds 3 --n-jobs 16 [--heavy-rain-csv PATH]
 """
 
 from __future__ import annotations
@@ -28,11 +29,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from qrfsl import QRFSL, ConvexWeights, RForest  # noqa: E402
 
 warnings.filterwarnings("ignore")
-HEAVY_RAIN = Path(__file__).resolve().parents[3] / "heavyrain" / "python" / "data" / "Dat_train" / "tdat.csv"
+HEAVY_RAIN = None   # set from --heavy-rain-csv
 
 
 def friedman(n, rng, noise):
-    X, f = make_friedman1(n_samples=n, n_features=10, noise=0.0, random_state=int(rng.integers(2**31 - 1)))
+    X, f = make_friedman1(n_samples=n, n_features=10, noise=0.0, random_state=int(rng.integers(1e9)))
     return X, f + noise(rng, n, X)
 
 
@@ -41,7 +42,7 @@ SYNTHETIC = {
     "friedman, heavy-tailed noise": lambda n, r: friedman(n, r, lambda r, n, X: r.standard_t(2, n)),
     "friedman, noise grows with x": lambda n, r: friedman(n, r, lambda r, n, X: r.normal(0, 1, n) * (0.2 + 4 * X[:, 0])),
     "skewed (lognormal) target": lambda n, r: (lambda X, f: (X, np.exp(f / 6 + r.normal(0, 0.8, n))))(
-        *make_friedman1(n, 10, noise=0, random_state=int(r.integers(2**31 - 1)))),
+        *make_friedman1(n, 10, noise=0, random_state=int(r.integers(1e9)))),
 }
 
 
@@ -51,7 +52,7 @@ def real(name, rng, n_train):
     elif name == "diabetes":
         d = load_diabetes(); X, y = d.data, d.target
     else:
-        t = pd.read_csv(HEAVY_RAIN, encoding="euc-kr")
+        t = pd.read_csv(HEAVY_RAIN, encoding="euc-kr")   # synthetic heavy rain damage
         y = t["y"].to_numpy(float)
         X = t[[c for c in t.columns if c[0] in "dx" or c in ("tot", "region", "sido_code")]].to_numpy(float)
     idx = rng.permutation(len(y)); ntr = min(n_train, int(0.6 * len(y)))
@@ -101,10 +102,14 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--seeds", type=int, default=3)
     p.add_argument("--n-jobs", type=int, default=16)
+    p.add_argument("--heavy-rain-csv", default=None,
+                   help="tdat.csv of the Heavy-Rain-Damage-Prediction repository (optional)")
     a = p.parse_args()
+    global HEAVY_RAIN
+    HEAVY_RAIN = Path(a.heavy_rain_csv) if a.heavy_rain_csv else None
     out = Path(__file__).with_name("results")
     bench_rows, abl_rows = [], []
-    reals = ["california housing", "diabetes"] + (["heavy rain synthetic damage"] if HEAVY_RAIN.exists() else [])
+    reals = ["california housing", "diabetes"] + (["heavy rain synthetic damage"] if HEAVY_RAIN else [])
     for seed in range(1, a.seeds + 1):
         r = np.random.default_rng(seed)
         cases = [(n, *(lambda X, y: (X[:1000], y[:1000], X[1000:], y[1000:]))(*g(3000, r))) for n, g in SYNTHETIC.items()]

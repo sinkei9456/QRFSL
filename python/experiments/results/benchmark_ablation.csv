@@ -1,0 +1,106 @@
+data,seed,model,rmse
+"friedman, normal noise",1,random forest (mean),2.1000311075761737
+"friedman, normal noise",1,2nd stage on mean only,2.1734269860103255
+"friedman, normal noise",1,2nd stage on median+spread+skew,2.040643355449564
+"friedman, normal noise",1,2nd stage on all 21 quantiles (= QRFSL),1.889270747762771
+"friedman, normal noise",1,2nd stage on OOF RF mean (no quantiles),2.140844711047127
+"friedman, heavy-tailed noise",1,random forest (mean),4.816576721389713
+"friedman, heavy-tailed noise",1,2nd stage on mean only,5.082205323584233
+"friedman, heavy-tailed noise",1,2nd stage on median+spread+skew,4.8631495754604215
+"friedman, heavy-tailed noise",1,2nd stage on all 21 quantiles (= QRFSL),4.826687274562895
+"friedman, heavy-tailed noise",1,2nd stage on OOF RF mean (no quantiles),5.078147641172989
+"friedman, noise grows with x",1,random forest (mean),3.008702831422197
+"friedman, noise grows with x",1,2nd stage on mean only,3.3859424480288483
+"friedman, noise grows with x",1,2nd stage on median+spread+skew,3.082641268851965
+"friedman, noise grows with x",1,2nd stage on all 21 quantiles (= QRFSL),2.9914842624416416
+"friedman, noise grows with x",1,2nd stage on OOF RF mean (no quantiles),3.3091614297956014
+skewed (lognormal) target,1,random forest (mean),28.108434838604914
+skewed (lognormal) target,1,2nd stage on mean only,34.234240682093734
+skewed (lognormal) target,1,2nd stage on median+spread+skew,29.882991883745444
+skewed (lognormal) target,1,2nd stage on all 21 quantiles (= QRFSL),29.98655518431057
+skewed (lognormal) target,1,2nd stage on OOF RF mean (no quantiles),33.728122797367426
+california housing,1,random forest (mean),0.6083116162286726
+california housing,1,2nd stage on mean only,0.6879279838364131
+california housing,1,2nd stage on median+spread+skew,0.615186323574968
+california housing,1,2nd stage on all 21 quantiles (= QRFSL),0.6120879183544815
+california housing,1,2nd stage on OOF RF mean (no quantiles),0.6870397527455908
+diabetes,1,random forest (mean),55.63593279723449
+diabetes,1,2nd stage on mean only,72.09218352620276
+diabetes,1,2nd stage on median+spread+skew,58.09620922548607
+diabetes,1,2nd stage on all 21 quantiles (= QRFSL),58.771988151177716
+diabetes,1,2nd stage on OOF RF mean (no quantiles),69.3440187674402
+heavy rain synthetic damage,1,random forest (mean),2567608.476496906
+heavy rain synthetic damage,1,2nd stage on mean only,2975420.6793323094
+heavy rain synthetic damage,1,2nd stage on median+spread+skew,2860708.1671671057
+heavy rain synthetic damage,1,2nd stage on all 21 quantiles (= QRFSL),2646983.9782698248
+heavy rain synthetic damage,1,2nd stage on OOF RF mean (no quantiles),3168202.905596388
+"friedman, normal noise",2,random forest (mean),1.977216968012931
+"friedman, normal noise",2,2nd stage on mean only,2.1441558160536123
+"friedman, normal noise",2,2nd stage on median+spread+skew,1.930169745408439
+"friedman, normal noise",2,2nd stage on all 21 quantiles (= QRFSL),1.8122183375258736
+"friedman, normal noise",2,2nd stage on OOF RF mean (no quantiles),2.0754407801595307
+"friedman, heavy-tailed noise",2,random forest (mean),4.235378634570721
+"friedman, heavy-tailed noise",2,2nd stage on mean only,4.4009313813835895
+"friedman, heavy-tailed noise",2,2nd stage on median+spread+skew,4.227075536907368
+"friedman, heavy-tailed noise",2,2nd stage on all 21 quantiles (= QRFSL),4.13551548146917
+"friedman, heavy-tailed noise",2,2nd stage on OOF RF mean (no quantiles),4.376026782848984
+"friedman, noise grows with x",2,random forest (mean),3.087823661406993
+"friedman, noise grows with x",2,2nd stage on mean only,3.458693501532582
+"friedman, noise grows with x",2,2nd stage on median+spread+skew,3.0483978108943024
+"friedman, noise grows with x",2,2nd stage on all 21 quantiles (= QRFSL),2.9298616165012534
+"friedman, noise grows with x",2,2nd stage on OOF RF mean (no quantiles),3.443450870159426
+skewed (lognormal) target,2,random forest (mean),32.2133633357761
+skewed (lognormal) target,2,2nd stage on mean only,34.30366360342171
+skewed (lognormal) target,2,2nd stage on median+spread+skew,33.98830243222373
+skewed (lognormal) target,2,2nd stage on all 21 quantiles (= QRFSL),33.861838060759375
+skewed (lognormal) target,2,2nd stage on OOF RF mean (no quantiles),33.376142182421646
+california housing,2,random forest (mean),0.5973890277826187
+california housing,2,2nd stage on mean only,0.6846746722020781
+california housing,2,2nd stage on median+spread+skew,0.6063372630069139
+california housing,2,2nd stage on all 21 quantiles (= QRFSL),0.5875387649060229
+california housing,2,2nd stage on OOF RF mean (no quantiles),0.6872434483139126
+diabetes,2,random forest (mean),57.43927008537302
+diabetes,2,2nd stage on mean only,65.42829125677008
+diabetes,2,2nd stage on median+spread+skew,61.05251962818128
+diabetes,2,2nd stage on all 21 quantiles (= QRFSL),61.4292903616857
+diabetes,2,2nd stage on OOF RF mean (no quantiles),63.17504241679862
+heavy rain synthetic damage,2,random forest (mean),2813963.2441690937
+heavy rain synthetic damage,2,2nd stage on mean only,3142876.5570890186
+heavy rain synthetic damage,2,2nd stage on median+spread+skew,2803730.1426668656
+heavy rain synthetic damage,2,2nd stage on all 21 quantiles (= QRFSL),2881001.2087710896
+heavy rain synthetic damage,2,2nd stage on OOF RF mean (no quantiles),3257593.8951704735
+"friedman, normal noise",3,random forest (mean),2.052571966578748
+"friedman, normal noise",3,2nd stage on mean only,2.152355417128379
+"friedman, normal noise",3,2nd stage on median+spread+skew,1.9857466418355931
+"friedman, normal noise",3,2nd stage on all 21 quantiles (= QRFSL),1.8516839591956615
+"friedman, normal noise",3,2nd stage on OOF RF mean (no quantiles),2.1171379520792697
+"friedman, heavy-tailed noise",3,random forest (mean),3.8351099344926123
+"friedman, heavy-tailed noise",3,2nd stage on mean only,4.234996779801258
+"friedman, heavy-tailed noise",3,2nd stage on median+spread+skew,3.9093050931501945
+"friedman, heavy-tailed noise",3,2nd stage on all 21 quantiles (= QRFSL),3.8658744611327984
+"friedman, heavy-tailed noise",3,2nd stage on OOF RF mean (no quantiles),4.281926279303149
+"friedman, noise grows with x",3,random forest (mean),3.0229974463150606
+"friedman, noise grows with x",3,2nd stage on mean only,3.3816050881519644
+"friedman, noise grows with x",3,2nd stage on median+spread+skew,3.1317517482118515
+"friedman, noise grows with x",3,2nd stage on all 21 quantiles (= QRFSL),3.035357847069227
+"friedman, noise grows with x",3,2nd stage on OOF RF mean (no quantiles),3.4409292711747934
+skewed (lognormal) target,3,random forest (mean),24.79922164594253
+skewed (lognormal) target,3,2nd stage on mean only,28.26112097763513
+skewed (lognormal) target,3,2nd stage on median+spread+skew,26.44334060720042
+skewed (lognormal) target,3,2nd stage on all 21 quantiles (= QRFSL),25.70166516100853
+skewed (lognormal) target,3,2nd stage on OOF RF mean (no quantiles),28.172521306406058
+california housing,3,random forest (mean),0.5839522006851727
+california housing,3,2nd stage on mean only,0.6861732093442722
+california housing,3,2nd stage on median+spread+skew,0.6038837979470123
+california housing,3,2nd stage on all 21 quantiles (= QRFSL),0.5679643057761382
+california housing,3,2nd stage on OOF RF mean (no quantiles),0.6541525165829107
+diabetes,3,random forest (mean),60.04893107649652
+diabetes,3,2nd stage on mean only,69.2268628537709
+diabetes,3,2nd stage on median+spread+skew,65.27448522325136
+diabetes,3,2nd stage on all 21 quantiles (= QRFSL),63.24862038016024
+diabetes,3,2nd stage on OOF RF mean (no quantiles),69.94883148251853
+heavy rain synthetic damage,3,random forest (mean),2927024.408623446
+heavy rain synthetic damage,3,2nd stage on mean only,3200246.9495780854
+heavy rain synthetic damage,3,2nd stage on median+spread+skew,2948283.038753147
+heavy rain synthetic damage,3,2nd stage on all 21 quantiles (= QRFSL),2884052.329163015
+heavy rain synthetic damage,3,2nd stage on OOF RF mean (no quantiles),3280737.0875411863
