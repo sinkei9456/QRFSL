@@ -20,7 +20,8 @@ This repository holds a Python port ([python/](python/)) of the original R code,
 5. [Python port](#5-python-port)
 6. [Running the Python version](#6-running-the-python-version)
 7. [R and Python results compared](#7-r-and-python-results-compared)
-8. [References](#8-references)
+8. [Does QRFSL help, and for what?](#8-does-qrfsl-help-and-for-what-added-after-the-port)
+9. [References](#9-references)
 
 ## 1. Repository layout
 
@@ -327,7 +328,200 @@ Table 7. Friedman #1 test RMSE over 5 runs (target has no unit)
 
 The weights super learner gave non-zero weight to 5 of the 21 quantiles on average (3 to 8 per run on mtcars, 4 to 6 on Friedman #1). Using the 50 % quantile (the median) alone gave a mean RMSE of 2.512 on mtcars and 2.346 on Friedman #1, so the weighted average beats the median alone but not the random forest.
 
-## 8. References
+## 8. Does QRFSL help, and for what? (added after the port)
+
+The R code was written in 2019 with the intuition that feeding a model's whole predictive distribution to a second stage must carry more information than one point prediction. After porting it we tested that intuition. This section records the results, the reasoning, and the version of the idea that survives: **a decision value under an asymmetric cost, with an interval that has a coverage guarantee**. All code is in [python/conformal.py](python/conformal.py), [python/decision.py](python/decision.py) and [python/experiments/](python/experiments/); every table below can be regenerated with the commands in 8.6.
+
+### 8.1 What the second stage can and cannot do
+
+A QRF builds, for a new row, a weighted empirical distribution of the training targets, with the weights of the forest. The mean of that distribution is the forest's own prediction (in Meinshausen's definition of the forest; randomForest's bootstrap-leaf means differ slightly). So when the second stage is trained with squared error, its target is the conditional mean, and the forest already provides that mean. The only thing left for the second stage to learn is a correction of the forest's bias. This explains the benchmark below: QRFSL helps where the forest is biased (a smooth signal, few rows), and there a better base model helps more.
+
+### 8.2 Benchmark of the original method as a point predictor
+
+1,000 training rows, 2,000 test rows, 3 seeds; `python -m experiments.run_benchmark`. Numbers are the test RMSE divided by that of a plain random forest (mean prediction); below 1 is better. Differences under about 2% are within the seed-to-seed spread.
+
+Table 8. Test RMSE relative to the plain random forest (no unit)
+
+| Model | Friedman, normal noise | Friedman, heavy-tailed noise | Friedman, noise grows with x | Log-normal target | California housing | Diabetes (n = 265) | Heavy rain synthetic damage |
+|:--|--:|--:|--:|--:|--:|--:|--:|
+| QRFSL (rf) | 0.91 | 1.00 | 0.98 | 1.05 | 0.99 | 1.06 | 1.01 |
+| QRFSL (weights) | 1.00 | 1.00 | 1.00 | 1.00 | 0.97 | 1.00 | 0.98 |
+| QRF median | 1.02 | 1.00 | 1.01 | 1.05 | 1.00 | 1.03 | 1.01 |
+| Random forest on log y, exp back | 1.03 | 1.01 | 1.04 | 1.04 | 1.05 | 1.05 | 1.00 |
+| GBM (HistGradientBoosting) | 0.74 | 0.97 | 0.93 | 1.03 | 0.98 | 1.04 | 1.05 |
+
+Table 9. What the second stage uses: the same stacking with fewer inputs (RMSE relative to the plain random forest)
+
+| Second-stage input | Friedman, normal noise | California housing | Diabetes | Heavy rain synthetic damage |
+|:--|--:|--:|--:|--:|
+| Out-of-fold RF mean only (1 input) | 1.03 | 1.13 | 1.17 | 1.17 |
+| Median, spread, skew (3 inputs) | 0.97 | 1.02 | 1.07 | 1.04 |
+| All 21 quantiles (= QRFSL) | 0.91 | 0.99 | 1.06 | 1.01 |
+
+Reading: QRFSL (rf) beats the forest clearly only on the smooth Friedman signal, where GBM gains far more; it loses on the skewed target and on small data, where the second-stage forest overfits. The "weights" variant is safe but gains at most 2 to 3%. Using all 21 quantiles works better than three summaries and much better than one number, mainly because a forest on one input is a poor smoother. As a general accuracy booster the method is not worth its cost.
+
+### 8.3 The version that survives: decisions and guaranteed intervals
+
+Two things a predictive distribution can give that a mean cannot:
+
+**A decision value under an asymmetric cost.** If under-predicting costs c_under per unit and over-predicting costs c_over per unit, the decision with the lowest expected cost is the quantile at level tau = c_under / (c_under + c_over). With a fixed penalty on top (for example when a budget is exceeded), the best decision is no longer one quantile; it depends on the shape of the distribution. [decision.py](python/decision.py) offers four routes from QRF output to a decision:
+- *plug-in*: compute the expected cost of every atom of the QRF distribution and take the smallest (no learning);
+- *QRFSL pinball stage*: boosting with the pinball loss at tau on the 21 out-of-fold quantiles (the original idea with the loss changed);
+- *QRFSL cost-weight stage*: a weighted average of the 21 quantiles whose weights minimise the empirical cost on the out-of-fold rows (works for any cost);
+- baselines: the raw tau-quantile of the QRF, the same quantile after a one-sided conformal shift, LightGBM fitted directly with the pinball loss, and the median plus one constant shift.
+
+**An interval with a coverage guarantee (CQR).** Conformalized quantile regression (Romano, Patterson and Candès, 2019) takes the QRF's 5% and 95% quantiles, measures on calibration rows how far each y falls outside [q_lo(x), q_hi(x)], and widens (or narrows) every interval by the (1 - alpha)(1 + 1/n) quantile of those distances. The resulting interval covers a new y with probability at least 1 - alpha whatever the quantile model is, as long as the rows are exchangeable; the model's quality only decides the width. Because the shift is one constant, the width still varies with x as the QRF quantiles do, unlike a conformal interval built from residuals of a point prediction, which has the same width everywhere. [conformal.py](python/conformal.py) implements the split version (held-out calibration rows, exact guarantee), an asymmetric version (separate lower and upper shifts) and a version that reuses QRFSL's out-of-fold quantiles as calibration scores (no extra data; approximate guarantee).
+
+### 8.4 Experiment design
+
+Five data sets, 10 random splits each: 2,000 training rows, 1,000 calibration rows, 3,000 test rows (fewer when the data set is smaller). QRF with 500 trees and the full weighted distribution (`leaf_sample="all"`), 10 folds.
+
+| Data | Rows | Why it is here |
+|:--|--:|:--|
+| friedman_hetero | synthetic | noise sd grows from 0.2 to 4.2 with x0; tests whether the interval width follows the noise |
+| lognormal | synthetic | right-skewed target |
+| california | 20,640 | standard tabular regression, house value in 100k USD |
+| bike | 17,379 | hourly bike rentals; shortage and surplus have different costs |
+| claims | 24,944 | French motor claim amounts per policy, capped at 50,000 EUR; heavy right tail |
+
+Roles of the rows:
+
+| Rows | Used for | Role |
+|:--|:--|:--|
+| training rows, out-of-fold quantiles | second stages, conformal shift of the "cv" variant, median shift | validation inside training |
+| calibration rows | shifts of the split conformal variants | calibration |
+| test rows | coverage, width, mean cost; never used for any choice | evaluation |
+
+Costs: linear 1:1 (tau 0.5), 3:1 (tau 0.75), 9:1 (tau 0.9), and linear 1:1 plus a fixed penalty of half the training standard deviation of y whenever y exceeds the decision.
+
+### 8.5 Results
+
+**Intervals (nominal coverage 90%).** `experiments/results/intervals.csv`. Means over 10 splits; the spread between splits is at most 0.02 in coverage.
+
+Table 10. Coverage of the 90% intervals (share of test rows inside, 0 to 1)
+
+| Method | bike | california | claims | friedman_hetero | lognormal |
+|:--|--:|--:|--:|--:|--:|
+| QRF raw (5%, 95%) | 0.963 | 0.966 | 0.895 | 0.956 | 0.921 |
+| QRF + CQR split | 0.907 | 0.898 | 0.896 | 0.895 | 0.894 |
+| QRF + CQR split, asymmetric | 0.912 | 0.932 | 0.895 | 0.896 | 0.895 |
+| QRF + CQR cv (no calibration set) | 0.911 | 0.904 | 0.905 | 0.897 | 0.900 |
+| RF point +- residual conformal | 0.900 | 0.892 | 0.898 | 0.892 | 0.892 |
+| LightGBM quantiles raw | 0.715 | 0.702 | 0.729 | 0.693 | 0.710 |
+| LightGBM + CQR split | 0.896 | 0.893 | 0.896 | 0.894 | 0.894 |
+
+Table 11. Mean interval width divided by the standard deviation of the training target (no unit)
+
+| Method | bike | california | claims | friedman_hetero | lognormal |
+|:--|--:|--:|--:|--:|--:|
+| QRF raw (5%, 95%) | 1.67 | 1.93 | 1.53 | 2.27 | 2.02 |
+| QRF + CQR split | 1.64 | 1.83 | 1.53 | 1.80 | 1.99 |
+| QRF + CQR split, asymmetric | 1.54 | 1.86 | 1.57 | 1.80 | 1.85 |
+| QRF + CQR cv (no calibration set) | 1.64 | 1.85 | 1.53 | 1.81 | 1.99 |
+| RF point +- residual conformal | 1.45 | 1.49 | 1.39 | 1.73 | 1.87 |
+| LightGBM quantiles raw | 0.77 | 0.97 | 1.12 | 1.06 | 1.16 |
+| LightGBM + CQR split | 0.96 | 1.33 | 1.34 | 1.58 | 1.40 |
+
+Table 12. friedman_hetero: coverage in the fifth of test rows with the smallest and with the largest true noise scale (0 to 1)
+
+| Method | Quietest fifth | Noisiest fifth |
+|:--|--:|--:|
+| QRF raw (5%, 95%) | 0.988 | 0.894 |
+| QRF + CQR split | 0.928 | 0.817 |
+| QRF + CQR cv | 0.934 | 0.817 |
+| RF point +- residual conformal | 0.998 | 0.723 |
+| LightGBM + CQR split | 0.968 | 0.818 |
+
+Reading:
+- Raw QRF intervals are too wide (coverage 0.92 to 0.97 instead of 0.90, except on claims); raw LightGBM quantiles are far too narrow (0.69 to 0.73). CQR brings every method to 0.89 to 0.91, as the guarantee says, and for QRF it also shrinks the width (friedman_hetero: 2.27 to 1.80 standard deviations).
+- At the same coverage, QRF + CQR gives the widest intervals: 1.1 to 1.7 times those of LightGBM + CQR and 1.04 to 1.23 times those of the constant-width interval around the forest's point prediction. The forest's quantiles are noisy; CQR fixes their level, not their sharpness.
+- The width follows the noise only partly. Where the noise varies (friedman_hetero), the constant-width interval covers 99.8% of the quietest fifth and 72% of the noisiest; QRF + CQR covers 93% and 82%. On the heavy-tailed claims data the narrowest fifth of the QRF + CQR intervals still covers 87% of its rows, LightGBM + CQR 77%. No method reaches 90% in every part of the data; CQR guarantees the average only.
+- The cv variant, which reuses QRFSL's out-of-fold quantiles instead of a calibration set, gives the same coverage (0.90 to 0.91) and width as the split variant. This is the one practical advantage QRFSL's structure brings to intervals: no data has to be set aside.
+
+In short: always conformalize; QRF + CQR is valid, simple and needs no calibration set, but a conformalized boosting quantile model is sharper at the same coverage.
+
+**Decisions under asymmetric costs.** `experiments/results/decisions.csv`. Means over 10 splits. Numbers are the mean test cost divided by that of the raw QRF tau-quantile (the natural answer for a linear cost); below 1 is better. The spread between splits is at most 0.02 at 3:1 and 0.04 at 9:1 for the learned methods.
+
+Table 13. Mean cost relative to the raw QRF tau-quantile, linear cost 3:1 (tau 0.75, no unit)
+
+| Method | bike | california | claims | friedman_hetero | lognormal |
+|:--|--:|--:|--:|--:|--:|
+| RF mean (ignores the cost) | 1.27 | 1.17 | 1.06 | 1.19 | 1.02 |
+| QRF median + one shift | 1.18 | 1.06 | 0.99 | 1.01 | 1.07 |
+| QRF tau-quantile raw | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| QRF tau-quantile + conformal shift | 0.99 | 0.99 | 1.00 | 0.98 | 1.00 |
+| QRFSL cost-weight stage | 0.97 | 0.98 | 1.00 | 0.98 | 1.00 |
+| QRFSL pinball stage | 0.94 | 0.96 | 1.02 | 0.92 | 1.00 |
+| LightGBM direct tau-quantile | 0.63 | 0.94 | 1.03 | 0.88 | 1.00 |
+| LightGBM plug-in (21 quantiles) | 0.61 | 0.92 | 1.02 | 0.86 | 0.99 |
+
+Table 14. Mean cost relative to the raw QRF tau-quantile, linear cost 9:1 (tau 0.9, no unit)
+
+| Method | bike | california | claims | friedman_hetero | lognormal |
+|:--|--:|--:|--:|--:|--:|
+| RF mean (ignores the cost) | 1.82 | 1.75 | 1.02 | 1.97 | 1.33 |
+| QRF median + one shift | 1.23 | 1.11 | 0.97 | 0.99 | 1.17 |
+| QRF tau-quantile raw | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| QRF tau-quantile + conformal shift | 0.96 | 0.99 | 1.00 | 0.95 | 1.00 |
+| QRFSL cost-weight stage | 0.87 | 0.93 | 0.98 | 0.94 | 0.99 |
+| QRFSL pinball stage | 0.82 | 0.92 | 0.98 | 0.88 | 0.99 |
+| LightGBM direct tau-quantile | 0.63 | 1.00 | 1.03 | 0.93 | 1.05 |
+| LightGBM plug-in (21 quantiles) | 0.58 | 0.97 | 1.00 | 0.89 | 1.03 |
+
+Table 15. Share of test rows whose y exceeds the decision, linear cost 9:1 (the cost-optimal share is 0.10)
+
+| Method | bike | california | claims | friedman_hetero | lognormal |
+|:--|--:|--:|--:|--:|--:|
+| QRF tau-quantile raw | 0.043 | 0.043 | 0.099 | 0.053 | 0.083 |
+| QRF tau-quantile + conformal shift | 0.099 | 0.095 | 0.097 | 0.101 | 0.101 |
+| QRFSL pinball stage | 0.114 | 0.120 | 0.118 | 0.121 | 0.119 |
+| LightGBM direct tau-quantile | 0.188 | 0.191 | 0.166 | 0.213 | 0.187 |
+
+Table 16. Mean cost relative to the plug-in decision under the full QRF distribution, linear 1:1 plus a penalty of 0.5 sd when y exceeds the decision (no unit)
+
+| Method | bike | california | claims | friedman_hetero | lognormal |
+|:--|--:|--:|--:|--:|--:|
+| RF mean (ignores the cost) | 1.10 | 1.09 | 1.21 | 1.04 | 1.01 |
+| QRF median + one shift | 1.02 | 1.02 | 1.00 | 0.99 | 1.00 |
+| QRF plug-in (all atoms) | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| QRF plug-in (21 quantiles) | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| QRFSL cost-weight stage | 1.00 | 1.02 | 1.03 | 0.98 | 1.00 |
+| LightGBM plug-in (21 quantiles) | 0.73 | 0.96 | 1.07 | 0.89 | 1.00 |
+
+Reading:
+- The raw QRF quantile is too cautious: at tau 0.9 only 4 to 5% of the test rows exceed it instead of 10% (except on claims), the same miscalibration that made the raw intervals too wide. The QRFSL pinball stage corrects this row by row and lowers the cost by 4 to 8% at 3:1 and by 8 to 18% at 9:1 on bike, california and friedman_hetero. The one-constant conformal shift sets the exceedance share exactly to 10% but lowers the cost by only 1 to 5%: the second stage gains because it moves different rows by different amounts. On claims and lognormal, where the raw quantile already sits near its level, nothing changes the cost by more than 2%.
+- The cost-weight stage (a weighted average of the 21 quantiles) lies in between (3 to 13% at 9:1) and needs no boosting.
+- A boosting quantile model trained directly on x is far better on bike (0.63) and friedman_hetero (0.88 to 0.93) although its exceedance share is off (17 to 21%); it ties on california and is slightly worse on claims and lognormal. The choice of base model matters more than the second stage. The second stage repairs the forest's quantile; it does not make the forest the best model. We did not conformalize or stack the boosting model; combining the two is the obvious next step.
+- For the penalty cost, the plug-in decision under the QRF distribution is as good as any learned stage (cost-weight stage 0.98 to 1.03), and the 21 quantiles carry the same information as the full distribution (differences under 0.1%).
+- Ignoring the cost altogether (the forest mean) costs 1.3 to 2.0 times as much at 9:1. Using a cost-aware decision at all is the largest effect in these tables.
+
+**Overall.** Of the 2019 idea, this is what holds up: a second stage on the out-of-fold quantiles is a useful conditional recalibration of a forest's tau-quantile when the cost is strongly asymmetric (5 to 18% lower cost than the raw quantile at 9:1, more than a conformal shift), and the out-of-fold quantiles double as free calibration data for valid intervals. What does not hold up: the second stage as a general accuracy booster, and the forest as the best base model. If the task allows a boosting quantile model, train it directly and conformalize it; if a forest is wanted (small data, robustness, an existing pipeline), add the pinball stage for decisions and CQR for intervals.
+
+### 8.6 Running the experiments
+
+```bash
+cd python
+python -m experiments.run_benchmark --seeds 3 --n-jobs 16      # Tables 8-9
+python -m experiments.run_intervals --seeds 10 --n-jobs 16     # intervals
+python -m experiments.run_decisions --seeds 10 --n-jobs 16     # decisions
+```
+
+Results are written to `experiments/results/*.csv`. The public data sets are downloaded through scikit-learn (California housing) and OpenML (bike sharing, French motor claims) on first use. Using the pieces directly:
+
+```python
+from qrfsl import QRFSL
+from conformal import CQR
+from decision import LinearCost, expected_cost_decision
+
+m = QRFSL(k=10, seed=1, sl="none", leaf_sample="all").fit(X_train, y_train)
+q = m.predict_quantiles(X_test)                         # 21 quantiles per row
+cqr = CQR(alpha=0.1).fit(m.cv_quantiles_["quantile=0.05"], m.cv_quantiles_["quantile=0.95"], m.cv_y_)
+lo, hi = cqr.predict(q["quantile=0.05"], q["quantile=0.95"])   # 90% interval, no calibration set
+atoms, weights = m.predict_distribution(X_test)
+d = expected_cost_decision(atoms, weights, LinearCost(c_under=3, c_over=1))   # decision for a 3:1 cost
+```
+
+## 9. References
 
 - Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5–32.
 - Meinshausen, N. (2006). Quantile regression forests. *Journal of Machine Learning Research*, 7, 983–999.
