@@ -99,24 +99,39 @@ def cv_folds(n: int, k: int, seed: int) -> list[np.ndarray]:
 
 
 class QuantileRegressionForest:
-    """Port of R ``quantregForest`` (fit, then ``predict(what = probs)``).
+    """Quantile regression forest (Meinshausen, 2006) in two variants.
 
-    After growing the forest, quantregForest keeps, for every tree and every
-    leaf, the y of ONE training row picked at random among the training rows
-    that fall into that leaf. A prediction collects these stored values over
-    the trees (ntree values per row) and takes their quantiles (R
-    ``quantile`` type 7, numpy method "linear").
+    leaf_sample="one" (default, port of R ``quantregForest``): after growing
+        the forest, keep for every tree and every leaf the y of ONE training
+        row picked at random among the rows in that leaf. A prediction
+        collects these values over the trees (ntree values per row) and takes
+        their quantiles (R ``quantile`` type 7, numpy method "linear").
+    leaf_sample="all" (Meinshausen's definition): the predictive distribution
+        of a row is the weighted empirical distribution of ALL training y,
+        where the weight of training row i is the average over trees of
+        1 / (size of the leaf) when i shares the leaf with the new row. The
+        mean of this distribution is the forest prediction in Meinshausen's
+        definition (all rows of a leaf weighted equally); it differs slightly
+        from randomForest's prediction, whose leaf values are means of the
+        bootstrap draws only. Quantiles are the generalised inverse of the
+        weighted CDF.
+    ``predict_distribution`` returns the atoms and weights of either variant,
+    which ``decision.py`` uses to compute expected costs.
     """
 
-    def __init__(self, n_estimators=500, nodesize=5, random_state=None, n_jobs=None):
+    def __init__(self, n_estimators=500, nodesize=5, random_state=None, n_jobs=None,
+                 leaf_sample="one"):
         self.n_estimators = n_estimators
         self.nodesize = nodesize
         self.random_state = random_state
         self.n_jobs = n_jobs
+        self.leaf_sample = leaf_sample
 
     def fit(self, X, y):
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float).ravel()
+        if self.leaf_sample not in ("one", "all"):
+            raise ValueError("leaf_sample must be 'one' or 'all'")
         # separate random streams for growing the trees and for picking leaf values
         forest_seed, leaf_seed = np.random.SeedSequence(self.random_state).spawn(2)
         self.forest_ = RForest(self.n_estimators, self.nodesize,
@@ -124,9 +139,21 @@ class QuantileRegressionForest:
 
         nodes = self.forest_.apply(X)  # (n, ntree) leaf id of every training row
         n, ntree = nodes.shape
+        if self.leaf_sample == "all":
+            # training rows sorted by y; per tree, the leaf id of each sorted row
+            self.order_ = np.argsort(y, kind="mergesort")
+            self.y_sorted_ = y[self.order_]
+            self.train_nodes_ = nodes[self.order_]
+            # 1 / leaf size for every (training row, tree)
+            self.inv_leaf_size_ = np.empty_like(nodes, dtype=float)
+            for tree in range(ntree):
+                _, inv, counts = np.unique(nodes[:, tree], return_inverse=True, return_counts=True)
+                self.inv_leaf_size_[:, tree] = 1.0 / counts[inv]
+            self.inv_leaf_size_ = self.inv_leaf_size_[self.order_]
+            return self
+
         n_nodes = max(est.tree_.node_count for est in self.forest_.estimators_)
         rng = np.random.default_rng(leaf_seed)
-
         # values_nodes_[leaf, tree] = y of one random training row in that leaf
         self.values_nodes_ = np.full((n_nodes, ntree), np.nan)
         for tree in range(ntree):
@@ -136,9 +163,45 @@ class QuantileRegressionForest:
             self.values_nodes_[leaves, tree] = y[shuffled[first]]
         return self
 
+    def _weights(self, nodes, chunk=500) -> np.ndarray:
+        """leaf_sample="all": weights of the training rows (sorted by y) for each new row."""
+        ntree = nodes.shape[1]
+        out = np.empty((nodes.shape[0], len(self.y_sorted_)))
+        for start in range(0, nodes.shape[0], chunk):
+            block = nodes[start:start + chunk]
+            W = np.zeros((len(block), len(self.y_sorted_)))
+            for tree in range(ntree):
+                same = block[:, tree][:, None] == self.train_nodes_[:, tree][None, :]
+                W += same * self.inv_leaf_size_[:, tree][None, :]
+            out[start:start + chunk] = W / ntree
+        return out
+
+    def predict_distribution(self, X):
+        """Predictive distribution of every row as (atoms, weights), both (n_rows, n_atoms).
+
+        Atoms are sorted along axis 1; weights are non-negative and sum to 1
+        per row. For leaf_sample="one" the atoms are the ntree stored leaf
+        values; for "all" they are the sorted training y.
+        """
+        nodes = self.forest_.apply(np.asarray(X, dtype=float))
+        if self.leaf_sample == "all":
+            W = self._weights(nodes)
+            return np.broadcast_to(self.y_sorted_, W.shape), W
+        values = self.values_nodes_[nodes, np.arange(nodes.shape[1])]
+        values = np.sort(values, axis=1)                       # NaN sorts last
+        ok = ~np.isnan(values)
+        w = ok / ok.sum(axis=1, keepdims=True)
+        return np.where(ok, values, 0.0), w
+
     def predict(self, X, probs) -> np.ndarray:
         """Predicted quantiles, shape (n_rows, len(probs))."""
+        probs = np.atleast_1d(np.asarray(probs, dtype=float))
         nodes = self.forest_.apply(np.asarray(X, dtype=float))
+        if self.leaf_sample == "all":
+            cdf = np.cumsum(self._weights(nodes), axis=1)
+            cdf[:, -1] = 1.0
+            idx = np.stack([np.argmax(cdf >= p - 1e-12, axis=1) for p in probs], axis=1)
+            return self.y_sorted_[idx]
         values = self.values_nodes_[nodes, np.arange(nodes.shape[1])]  # (m, ntree)
         return np.nanquantile(values, probs, axis=1, method="linear").T
 
@@ -172,14 +235,15 @@ class ConvexWeights:
         return np.asarray(Q, dtype=float) @ self.coef_
 
 
-SL_TYPES = ("rf", "weights")
+SL_TYPES = ("rf", "weights", "none")
 
 
-def _fold_quantiles(X, y, test_idx, probs, fold_seed, qrf_trees, nodesize):
+def _fold_quantiles(X, y, test_idx, probs, fold_seed, qrf_trees, nodesize, leaf_sample):
     """Fit a QRF without one fold and predict the quantiles of that fold."""
     train = np.ones(len(y), dtype=bool)
     train[test_idx] = False
-    qrf = QuantileRegressionForest(qrf_trees, nodesize, random_state=fold_seed)
+    qrf = QuantileRegressionForest(qrf_trees, nodesize, random_state=fold_seed,
+                                   leaf_sample=leaf_sample)
     qrf.fit(X[train], y[train])
     return qrf.predict(X[test_idx], probs)
 
@@ -206,13 +270,16 @@ class QRFSL:
     sl : type of super learner. "rf" (default) is the random forest that the
         R code always fits. "weights" is a weighted average of the
         quantiles (``ConvexWeights``); R lists it as ``sl = 0`` but the R code
-        never uses it.
+        never uses it. "none" fits no super learner (only the cross-validated
+        quantiles and the full-data QRF, for ``conformal.py`` / ``decision.py``).
     sl_trees : number of trees of the random forest super learner
         (R ``ntree = 1000``).
+    leaf_sample : "one" (R quantregForest) or "all" (Meinshausen), see
+        ``QuantileRegressionForest``.
     """
 
     def __init__(self, k=10, probs=DEFAULT_PROBS, seed=0, full_seed=0, n_jobs=1,
-                 qrf_trees=500, sl="rf", sl_trees=1000, nodesize=5):
+                 qrf_trees=500, sl="rf", sl_trees=1000, nodesize=5, leaf_sample="one"):
         self.k = k
         self.probs = tuple(probs)
         self.seed = seed
@@ -222,6 +289,7 @@ class QRFSL:
         self.sl = sl
         self.sl_trees = sl_trees
         self.nodesize = nodesize
+        self.leaf_sample = leaf_sample
 
     def fit(self, X, y):
         X = _as_frame(X)
@@ -242,7 +310,8 @@ class QRFSL:
         # 1) cross-validated quantiles: fold i (1-based) uses seed i, as set.seed(i) in R
         self.folds_ = cv_folds(len(y), self.k, self.seed)
         jobs = (
-            delayed(_fold_quantiles)(Xa, y, idx, self.probs, i + 1, self.qrf_trees, self.nodesize)
+            delayed(_fold_quantiles)(Xa, y, idx, self.probs, i + 1, self.qrf_trees,
+                                     self.nodesize, self.leaf_sample)
             for i, idx in enumerate(self.folds_)
         )
         pred_cv = np.vstack(Parallel(n_jobs=self.n_jobs)(jobs))
@@ -253,12 +322,14 @@ class QRFSL:
         if self.sl == "rf":
             self.sl_ = RForest(self.sl_trees, self.nodesize, self.seed,
                                self.n_jobs).fit(pred_cv, yact_cv)
-        else:
+        elif self.sl == "weights":
             self.sl_ = ConvexWeights().fit(pred_cv, yact_cv)
+        else:
+            self.sl_ = None
 
         # 3) QRF on all training rows, used at prediction time
-        self.qmod_ = QuantileRegressionForest(self.qrf_trees, self.nodesize,
-                                              self.full_seed, self.n_jobs).fit(Xa, y)
+        self.qmod_ = QuantileRegressionForest(self.qrf_trees, self.nodesize, self.full_seed,
+                                              self.n_jobs, self.leaf_sample).fit(Xa, y)
 
         self.cv_quantiles_ = pd.DataFrame(pred_cv, columns=self.quantile_names_,
                                           index=X.index[order])
@@ -271,8 +342,15 @@ class QRFSL:
         q = self.qmod_.predict(X.to_numpy(dtype=float), self.probs)
         return pd.DataFrame(q, columns=self.quantile_names_, index=X.index)
 
+    def predict_distribution(self, X):
+        """Atoms and weights of the full-data QRF's predictive distribution per row."""
+        X = _as_frame(X, self.feature_names_)
+        return self.qmod_.predict_distribution(X.to_numpy(dtype=float))
+
     def predict(self, X, return_quantiles=False):
         """Final prediction of the super learner (R ``pred``)."""
+        if self.sl_ is None:
+            raise ValueError('no super learner was fitted (sl="none"); use predict_quantiles')
         qpred = self.predict_quantiles(X)
         pred = self.sl_.predict(qpred.to_numpy())
         return (pred, qpred) if return_quantiles else pred

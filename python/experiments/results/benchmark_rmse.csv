@@ -1,0 +1,144 @@
+data,seed,model,rmse,mae
+"friedman, normal noise",1,random forest (mean),2.1000311075761737,1.6438254295192065
+"friedman, normal noise",1,QRF median,2.1333078272439447,1.6623078058816327
+"friedman, normal noise",1,QRF mean of 21 quantiles,2.1496685321399718,1.6778168451246183
+"friedman, normal noise",1,QRFSL (rf),1.889270747762771,1.4583132735340891
+"friedman, normal noise",1,QRFSL (weights),2.1110399171891845,1.646039637587666
+"friedman, normal noise",1,"random forest on log y, exp back",2.1807581940286345,1.7083117882245524
+"friedman, normal noise",1,GBM (HistGradientBoosting),1.5390408971109526,1.2087110164188053
+"friedman, heavy-tailed noise",1,random forest (mean),4.816576721389713,2.185148593600309
+"friedman, heavy-tailed noise",1,QRF median,4.839710852196775,2.2369091806861654
+"friedman, heavy-tailed noise",1,QRF mean of 21 quantiles,4.833089057502596,2.2261062887152794
+"friedman, heavy-tailed noise",1,QRFSL (rf),4.826687274562895,2.185346901531952
+"friedman, heavy-tailed noise",1,QRFSL (weights),4.8301733350899525,2.214777910649458
+"friedman, heavy-tailed noise",1,GBM (HistGradientBoosting),4.7191146924315,2.011731119717335
+"friedman, noise grows with x",1,random forest (mean),3.008702831422197,2.2872312987188788
+"friedman, noise grows with x",1,QRF median,3.091303547538052,2.3527422362550205
+"friedman, noise grows with x",1,QRF mean of 21 quantiles,3.0609808358380897,2.3353087447460124
+"friedman, noise grows with x",1,QRFSL (rf),2.9914842624416416,2.230015936936779
+"friedman, noise grows with x",1,QRFSL (weights),3.050598783089373,2.3233394852597504
+"friedman, noise grows with x",1,"random forest on log y, exp back",3.122620746617673,2.3686920543483425
+"friedman, noise grows with x",1,GBM (HistGradientBoosting),2.797546469839641,2.0774371258518736
+skewed (lognormal) target,1,random forest (mean),28.108434838604914,15.827308511126313
+skewed (lognormal) target,1,QRF median,28.50687738628232,13.102086408491207
+skewed (lognormal) target,1,QRF mean of 21 quantiles,27.89493966103771,15.596082908265474
+skewed (lognormal) target,1,QRFSL (rf),29.98655518431057,16.14331876281952
+skewed (lognormal) target,1,QRFSL (weights),28.002215832392704,15.499648774088973
+skewed (lognormal) target,1,"random forest on log y, exp back",28.031478255981103,12.861913980901459
+skewed (lognormal) target,1,GBM (HistGradientBoosting),29.527070515728514,17.049003601365943
+california housing,1,random forest (mean),0.6112823582660121,0.4428488247734445
+california housing,1,QRF median,0.6169784866429636,0.41586435833333324
+california housing,1,QRF mean of 21 quantiles,0.6197014435613402,0.4506496542301587
+california housing,1,QRFSL (rf),0.6132100466537258,0.4244633685847775
+california housing,1,QRFSL (weights),0.6041430129221789,0.42842361093263603
+california housing,1,"random forest on log y, exp back",0.6432636674493418,0.4382088313221702
+california housing,1,GBM (HistGradientBoosting),0.5945901230040481,0.40983123953054124
+diabetes,1,random forest (mean),55.63593279723449,44.41293672316384
+diabetes,1,QRF median,56.13013279789747,43.53954802259887
+diabetes,1,QRF mean of 21 quantiles,55.431743808652996,44.575544794188865
+diabetes,1,QRFSL (rf),58.771988151177716,46.609760640301324
+diabetes,1,QRFSL (weights),55.1085416319157,43.94433112592157
+diabetes,1,"random forest on log y, exp back",60.66059833683875,47.3431261984207
+diabetes,1,GBM (HistGradientBoosting),57.8569551239356,44.90656344099052
+heavy rain synthetic damage,1,random forest (mean),2567608.476496906,1070100.2549328282
+heavy rain synthetic damage,1,QRF median,2543411.1730793896,835779.5162337662
+heavy rain synthetic damage,1,QRF mean of 21 quantiles,2573811.0111288005,1067635.6944444443
+heavy rain synthetic damage,1,QRFSL (rf),2646983.9782698248,1070819.7597114898
+heavy rain synthetic damage,1,QRFSL (weights),2522660.459961603,959984.0380037396
+heavy rain synthetic damage,1,"random forest on log y, exp back",2556403.1828501606,834817.5471417494
+heavy rain synthetic damage,1,GBM (HistGradientBoosting),2726675.991903141,1138852.285965011
+"friedman, normal noise",2,random forest (mean),1.977216968012931,1.5668064076664243
+"friedman, normal noise",2,QRF median,2.0061212188475532,1.5915435512322753
+"friedman, normal noise",2,QRF mean of 21 quantiles,2.0241852236170867,1.6042168688216984
+"friedman, normal noise",2,QRFSL (rf),1.8122183375258736,1.420726863193662
+"friedman, normal noise",2,QRFSL (weights),1.9813017785880016,1.5713847697278933
+"friedman, normal noise",2,"random forest on log y, exp back",2.0300227214380766,1.6121200289735802
+"friedman, normal noise",2,GBM (HistGradientBoosting),1.4681028584002664,1.165190601685221
+"friedman, heavy-tailed noise",2,random forest (mean),4.235378634570721,2.2106912190249837
+"friedman, heavy-tailed noise",2,QRF median,4.224062091739661,2.1821104621669667
+"friedman, heavy-tailed noise",2,QRF mean of 21 quantiles,4.259294462807094,2.240330810241232
+"friedman, heavy-tailed noise",2,QRFSL (rf),4.13551548146917,2.0734892545490564
+"friedman, heavy-tailed noise",2,QRFSL (weights),4.220825244673075,2.1858595798189944
+"friedman, heavy-tailed noise",2,"random forest on log y, exp back",4.272972406104397,2.239932058681817
+"friedman, heavy-tailed noise",2,GBM (HistGradientBoosting),4.048821742470122,1.9561147038542936
+"friedman, noise grows with x",2,random forest (mean),3.087823661406993,2.376904312852337
+"friedman, noise grows with x",2,QRF median,3.0738034991461896,2.3430177823765885
+"friedman, noise grows with x",2,QRF mean of 21 quantiles,3.105530499759093,2.3946917201395403
+"friedman, noise grows with x",2,QRFSL (rf),2.9298616165012534,2.1775725025680925
+"friedman, noise grows with x",2,QRFSL (weights),3.0604757258934305,2.336759933078206
+"friedman, noise grows with x",2,GBM (HistGradientBoosting),2.8419255307027336,2.1106763675273577
+skewed (lognormal) target,2,random forest (mean),32.2133633357761,15.148668082063368
+skewed (lognormal) target,2,QRF median,34.35279809136762,13.941153564309506
+skewed (lognormal) target,2,QRF mean of 21 quantiles,32.45825624972751,15.10008779218085
+skewed (lognormal) target,2,QRFSL (rf),33.861838060759375,15.654612849076013
+skewed (lognormal) target,2,QRFSL (weights),32.24769800399882,14.986088133856947
+skewed (lognormal) target,2,"random forest on log y, exp back",34.33359661712577,13.833483772134315
+skewed (lognormal) target,2,GBM (HistGradientBoosting),32.49338507748951,15.52570634821706
+california housing,2,random forest (mean),0.5933043178895971,0.4293086164966665
+california housing,2,QRF median,0.5836328614576975,0.38916383
+california housing,2,QRF mean of 21 quantiles,0.6013369549328327,0.4385604935515872
+california housing,2,QRFSL (rf),0.5814520724002313,0.4031565896356107
+california housing,2,QRFSL (weights),0.5734152701953789,0.40174710257128193
+california housing,2,"random forest on log y, exp back",0.6096004899592954,0.41887924844339
+california housing,2,GBM (HistGradientBoosting),0.5849495851207004,0.4085633449990139
+diabetes,2,random forest (mean),57.43927008537302,45.89087532956685
+diabetes,2,QRF median,60.53817024404665,47.101694915254235
+diabetes,2,QRF mean of 21 quantiles,57.71065837342565,46.29208366962604
+diabetes,2,QRFSL (rf),61.4292903616857,48.582075329566855
+diabetes,2,QRFSL (weights),57.885531178152874,46.17199130924047
+diabetes,2,"random forest on log y, exp back",60.140138603564054,46.86233580422097
+diabetes,2,GBM (HistGradientBoosting),60.49851228270973,46.529335269970126
+heavy rain synthetic damage,2,random forest (mean),2813963.2441690937,1069698.2531267677
+heavy rain synthetic damage,2,QRF median,2842807.229068986,857764.2889610389
+heavy rain synthetic damage,2,QRF mean of 21 quantiles,2774241.0684337905,1057087.0610673053
+heavy rain synthetic damage,2,QRFSL (rf),2881001.2087710896,1081065.7916038602
+heavy rain synthetic damage,2,QRFSL (weights),2747068.5264868233,954610.3004095753
+heavy rain synthetic damage,2,"random forest on log y, exp back",2827540.853744225,851858.2039061026
+heavy rain synthetic damage,2,GBM (HistGradientBoosting),3001850.226278949,1174048.2903425517
+"friedman, normal noise",3,random forest (mean),2.052571966578748,1.632805741296735
+"friedman, normal noise",3,QRF median,2.094154458266131,1.6595520251768208
+"friedman, normal noise",3,QRF mean of 21 quantiles,2.089636097743027,1.657589007724234
+"friedman, normal noise",3,QRFSL (rf),1.8516839591956615,1.4416328743426066
+"friedman, normal noise",3,QRFSL (weights),2.054093664183618,1.6244000817234998
+"friedman, normal noise",3,"random forest on log y, exp back",2.1081665225139132,1.6818970833215041
+"friedman, normal noise",3,GBM (HistGradientBoosting),1.5289475269140549,1.2012262070227948
+"friedman, heavy-tailed noise",3,random forest (mean),3.8351099344926123,2.1625985476720513
+"friedman, heavy-tailed noise",3,QRF median,3.839339393504942,2.1322957610373483
+"friedman, heavy-tailed noise",3,QRF mean of 21 quantiles,3.862763593768219,2.1904073598104303
+"friedman, heavy-tailed noise",3,QRFSL (rf),3.8658744611327984,2.1128031105622513
+"friedman, heavy-tailed noise",3,QRFSL (weights),3.837604256926055,2.1524526386938896
+"friedman, heavy-tailed noise",3,GBM (HistGradientBoosting),3.753866090623667,2.091133817517345
+"friedman, noise grows with x",3,random forest (mean),3.0229974463150606,2.2754099065855664
+"friedman, noise grows with x",3,QRF median,3.075523515593254,2.304859237065638
+"friedman, noise grows with x",3,QRF mean of 21 quantiles,3.054951024575289,2.3042704949186597
+"friedman, noise grows with x",3,QRFSL (rf),3.035357847069227,2.2239055446906795
+"friedman, noise grows with x",3,QRFSL (weights),3.04673061099375,2.29103816895385
+"friedman, noise grows with x",3,GBM (HistGradientBoosting),2.8518469729560567,2.102786260179315
+skewed (lognormal) target,3,random forest (mean),24.79922164594253,13.910967144740127
+skewed (lognormal) target,3,QRF median,26.313993594362515,12.536096793635673
+skewed (lognormal) target,3,QRF mean of 21 quantiles,24.813050363788946,13.83924324980611
+skewed (lognormal) target,3,QRFSL (rf),25.70166516100853,14.151399588308966
+skewed (lognormal) target,3,QRFSL (weights),24.907164690669475,13.872154235701059
+skewed (lognormal) target,3,"random forest on log y, exp back",26.17742781965995,12.360585554719412
+skewed (lognormal) target,3,GBM (HistGradientBoosting),25.672099825588088,14.719551458518358
+california housing,3,random forest (mean),0.5941720417149481,0.4309811173125556
+california housing,3,QRF median,0.5927848894132114,0.40071766333333336
+california housing,3,QRF mean of 21 quantiles,0.6032527475032012,0.43857491102380947
+california housing,3,QRFSL (rf),0.5805977280262993,0.4054139038772217
+california housing,3,QRFSL (weights),0.5712661212845934,0.4058930930656745
+california housing,3,"random forest on log y, exp back",0.6275360998909236,0.42844636594092345
+california housing,3,GBM (HistGradientBoosting),0.5874729016851532,0.41181188677355157
+diabetes,3,random forest (mean),60.04893107649652,49.63023314500941
+diabetes,3,QRF median,61.4339822963721,49.64124293785311
+diabetes,3,QRF mean of 21 quantiles,59.992273059023496,49.845755986010225
+diabetes,3,QRFSL (rf),63.24862038016024,51.320898870056496
+diabetes,3,QRFSL (weights),59.8594431132053,49.82584442405891
+diabetes,3,"random forest on log y, exp back",60.25502012237575,48.05881134370652
+diabetes,3,GBM (HistGradientBoosting),61.608864051615576,48.994502579863465
+heavy rain synthetic damage,3,random forest (mean),2927024.408623446,1059133.9816056998
+heavy rain synthetic damage,3,QRF median,2970912.2071033916,896184.8051948051
+heavy rain synthetic damage,3,QRF mean of 21 quantiles,2878126.2604952133,1024217.1817524736
+heavy rain synthetic damage,3,QRFSL (rf),2884052.329163015,1036101.6227579546
+heavy rain synthetic damage,3,QRFSL (weights),2867166.7688354757,967898.0414711587
+heavy rain synthetic damage,3,"random forest on log y, exp back",2951124.709221369,870573.2780904646
+heavy rain synthetic damage,3,GBM (HistGradientBoosting),2981141.764697404,1095348.1080537376
