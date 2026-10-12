@@ -9,9 +9,13 @@ as calibration and new rows are exchangeable.
 
 Two ways to get calibration scores from a fitted ``QRFSL``:
   split : a held-out calibration set (exact finite-sample guarantee)
-  cv    : the out-of-fold quantiles of the training rows (no extra data;
-          the guarantee is approximate because the final QRF is refitted on
-          all rows, but in practice the coverage is close to nominal)
+  cv    : the out-of-fold quantiles of the training rows (no extra data).
+          No formal guarantee: the scores come from the fold models but the
+          shift is applied to the QRF refitted on all rows, so calibration
+          and new scores are not exchangeable. CV+ (Barber et al., 2021;
+          Gupta et al., 2022 for quantile scores) would restore a 1 - 2 alpha
+          guarantee by applying the fold models
+          to the new row. In the experiments the coverage was close to nominal.
 """
 
 from __future__ import annotations
